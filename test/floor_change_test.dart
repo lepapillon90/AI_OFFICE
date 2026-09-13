@@ -1,7 +1,7 @@
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/floors/floor_layout.dart';
+import 'package:ai_office/game/isometric/iso_floor_tiles_component.dart';
 import 'package:ai_office/game/isometric/iso_lobby_layout.dart';
-import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
 import 'package:ai_office/game/isometric/iso_projection.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
@@ -76,7 +76,9 @@ void main() {
       IsoProjection.priorityFor(game.elevator.position),
     );
     expect(
-        game.world.children.whereType<IsoLobbySpriteComponent>(), isNotEmpty);
+      game.world.children.whereType<IsoFloorTilesComponent>(),
+      hasLength(1),
+    );
     expect(game.world.children.whereType<NpcComponent>(), isEmpty);
 
     game.openElevatorPopup();
@@ -96,7 +98,7 @@ void main() {
     expect(game.elevator.position, FloorLayouts.workspace.elevatorPosition);
     expect(game.isElevatorNearby, isTrue);
     expect(game.isComputerNearby, isFalse);
-    expect(game.world.children.whereType<IsoLobbySpriteComponent>(), isEmpty);
+    expect(game.world.children.whereType<IsoFloorTilesComponent>(), isEmpty);
     expect(game.world.children.whereType<NpcComponent>(), isNotEmpty);
   });
 }

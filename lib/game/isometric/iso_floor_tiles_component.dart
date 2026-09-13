@@ -19,10 +19,8 @@ import 'package:flame/components.dart';
 /// individual depth-sorting against the player/NPCs — every tile shares
 /// the same very-negative [IsoLobbyPlacement.layerOffset] so the whole
 /// floor always renders behind everything else regardless of row. The
-/// overlay art (reception/cafe/store/lounge/planters/foreground) still
-/// needs per-placement world priority to interleave correctly with the
-/// player, so [IsoLobbyScene] keeps those as separate top-level
-/// [IsoLobbySpriteComponent]s.
+/// Structure and furniture layers will be added later as separate components;
+/// this first pass deliberately renders only the approved floor foundation.
 class IsoFloorTilesComponent extends PositionComponent {
   IsoFloorTilesComponent(this._placements)
       : super(

@@ -18,15 +18,11 @@ class IsoLobbyPlacement {
   final int layerOffset;
 }
 
-/// Collision and layered-art configuration for the first-floor lobby.
+/// First-floor configuration.
 ///
-/// Base spec: a 24x16 grid of 64px tiles (1536x1024 world). The hand-placed
-/// wall/furniture/overlay geometry below predates this grid — it was tuned
-/// pixel-by-pixel for the previous 15x11/960x704 layout's artwork — so
-/// until new art exists at the bigger canvas, [scaleX]/[scaleY] stretch it
-/// proportionally rather than freehand redesigning the collision shapes.
-/// [scaleX]/[scaleY] are exposed so tests can derive expectations from the
-/// same factors instead of duplicating scaled magic numbers.
+/// The floor foundation is a 24x16 grid of 64px tiles (1536x1024 world).
+/// It deliberately contains no furniture or structure art: those will be
+/// added only after the floor plan has been approved.
 abstract final class IsoLobbyLayout {
   static const _floorTileSize = 64.0;
   static const _floorColumns = 24;
@@ -34,52 +30,10 @@ abstract final class IsoLobbyLayout {
   static final Vector2 _worldSize =
       Vector2(_floorColumns * _floorTileSize, _floorRows * _floorTileSize);
 
-  static const scaleX = 1536 / 960; // 8/5
-  static const scaleY = 1024 / 704; // 16/11
-
-  static Rect _scaleRect(Rect rect) => Rect.fromLTWH(
-        rect.left * scaleX,
-        rect.top * scaleY,
-        rect.width * scaleX,
-        rect.height * scaleY,
-      );
-
-  static Vector2 _scalePoint(double x, double y) =>
-      Vector2(x * scaleX, y * scaleY);
-
-  // Exterior cutouts and their wall faces, at the original artwork's scale
-  // (see the class doc comment) — [wallBlockers] below stretches these to
-  // the current world size.
-  static const List<Rect> _legacyWallBlockers = [
-    Rect.fromLTWH(0, 0, 960, 88),
-    Rect.fromLTWH(0, 88, 352, 68),
-    Rect.fromLTWH(608, 88, 352, 68),
-    Rect.fromLTWH(0, 156, 256, 68),
-    Rect.fromLTWH(704, 156, 256, 68),
-    Rect.fromLTWH(0, 224, 36, 208),
-    Rect.fromLTWH(924, 224, 36, 208),
-    Rect.fromLTWH(0, 432, 240, 272),
-    Rect.fromLTWH(720, 432, 240, 272),
-    Rect.fromLTWH(240, 512, 96, 192),
-    Rect.fromLTWH(624, 512, 96, 192),
-    Rect.fromLTWH(336, 592, 288, 112),
-  ];
-
-  // Bases of the props, excluding their tall canopies and transparent
-  // padding — also at the original artwork's scale (see above).
-  static const List<Rect> _legacyFurnitureBlockers = [
-    Rect.fromLTWH(400, 192, 160, 96),
-    Rect.fromLTWH(96, 320, 240, 224),
-    Rect.fromLTWH(624, 320, 240, 192),
-    Rect.fromLTWH(400, 392, 160, 88), // Planter bed and surrounding pots.
-    Rect.fromLTWH(634, 520, 220, 104), // Lounge seats and coffee table.
-  ];
-
   static final List<Rect> wallBlockers =
-      _legacyWallBlockers.map(_scaleRect).toList();
+      FloorLayout.perimeterWalls(_worldSize);
 
-  static final List<Rect> furnitureBlockers =
-      _legacyFurnitureBlockers.map(_scaleRect).toList();
+  static const List<Rect> furnitureBlockers = [];
 
   static final FloorLayout floorLayout = FloorLayout(
     worldSize: _worldSize.clone(),
@@ -87,7 +41,7 @@ abstract final class IsoLobbyLayout {
       ...wallBlockers,
       ...furnitureBlockers,
     ],
-    elevatorPosition: _scalePoint(480, 80),
+    elevatorPosition: Vector2(768, 128),
   );
 
   /// Tile-by-tile floor construction for the first floor.
@@ -97,37 +51,6 @@ abstract final class IsoLobbyLayout {
   /// store, lobby, and outside areas are built out in later passes.
   static final List<IsoLobbyPlacement> placements = [
     ..._floorPlacements(),
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/reception.png',
-      worldFootPoint: _scalePoint(480, 288),
-      screenSize: Vector2(240, 240),
-    ),
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/cafe.png',
-      worldFootPoint: _scalePoint(216, 544),
-      screenSize: Vector2(300, 300),
-    ),
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/store.png',
-      worldFootPoint: _scalePoint(744, 512),
-      screenSize: Vector2(280, 280),
-    ),
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/lounge.png',
-      worldFootPoint: _scalePoint(744, 640),
-      screenSize: Vector2(240, 240),
-    ),
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/planters.png',
-      worldFootPoint: _scalePoint(480, 480),
-      screenSize: Vector2(220, 220),
-    ),
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/foreground.png',
-      worldFootPoint: Vector2(_worldSize.x / 2, _worldSize.y),
-      screenSize: Vector2(_worldSize.x, 240),
-      layerOffset: 100000,
-    ),
   ];
 
   static List<IsoLobbyPlacement> _floorPlacements() {
