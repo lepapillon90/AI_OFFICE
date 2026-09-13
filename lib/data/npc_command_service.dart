@@ -14,6 +14,7 @@ class NpcCommandService {
     required String employeeName,
     required String employeeRole,
     required String command,
+    required String companyId,
     List<Map<String, String>> history = const [],
   }) async {
     final response = await _client.functions.invoke(
@@ -23,6 +24,11 @@ class NpcCommandService {
         'employeeRole': employeeRole,
         'command': command,
         'history': history,
+        // Lets the function confirm the caller actually belongs to this
+        // company (and rate-limit per company) instead of trusting any
+        // signed-in user of the Supabase project — see
+        // docs/PHASE7_OPS_REVIEW.md.
+        'companyId': companyId,
       },
     );
     final data = response.data;

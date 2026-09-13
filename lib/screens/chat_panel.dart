@@ -236,6 +236,11 @@ class _ChatPanelState extends State<ChatPanel> {
                         controller: _controller,
                         focusNode: _inputFocusNode,
                         style: const TextStyle(color: Colors.white),
+                        // A UX nicety, not the real limit — the ask-employee
+                        // Edge Function truncates independently server-side
+                        // (docs/PHASE7_OPS_REVIEW.md), since a raw API call
+                        // could otherwise ignore whatever the client sends.
+                        maxLength: 1000,
                         decoration: InputDecoration(
                           hintText: _selectedRoomName != null
                               ? '$_selectedRoomName에게 메시지 보내기...'

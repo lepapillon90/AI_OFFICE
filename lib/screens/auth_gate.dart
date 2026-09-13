@@ -3,6 +3,7 @@ import 'package:ai_office/data/board_repository.dart';
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
+import 'package:ai_office/data/company_role.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/data/npc_command_service.dart';
 import 'package:ai_office/data/npc_document_repository.dart';
@@ -10,6 +11,7 @@ import 'package:ai_office/data/npc_task_repository.dart';
 import 'package:ai_office/data/npc_usage_repository.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/board/board_task.dart';
+import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
 import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/office_game.dart';
@@ -86,30 +88,35 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
 
   Future<_LoadedSession> _load() async {
     final companyId = await widget.repository.ensureCompany();
-    final role = await widget.repository.fetchRole(companyId);
-    final employees = await widget.repository.fetchEmployees(companyId);
-    // Falls back to no history rather than failing the whole session if
-    // the `messages` table's migration hasn't been run yet.
-    final chatHistory = await _chatRepository
-        .fetchRecentMessages(companyId)
-        .catchError((_) => <ChatMessage>[]);
-    // Same fallback for the npc_tasks/npc_usage_events tables — see
-    // docs/PHASE6_AI_EMPLOYEES.md's persistence section for the migration.
-    final taskHistory = await _taskRepository
-        .fetchRecentTasks(companyId)
-        .catchError((_) => <NpcTask>[]);
-    final usageSummaries = await _usageRepository
-        .fetchUsageSummaries(companyId)
-        .catchError((_) => <String, NpcUsageSummary>{});
-    // Same fallback for the activity_events table — see
-    // docs/PHASE7_ACTIVITY.md for the migration.
-    final activityHistory = await _activityRepository
-        .fetchRecentActivity(companyId)
-        .catchError((_) => <ActivityEvent>[]);
-    // Same fallback for the board_tasks table — see docs/PHASE7_BOARD.md.
-    final boardTasks = await _boardRepository
-        .fetchTasks(companyId)
-        .catchError((_) => <BoardTask>[]);
+    // These seven queries are all independent once companyId is known, so
+    // they run concurrently rather than one round trip after another —
+    // found during the Phase 7 ops review (docs/PHASE7_OPS_REVIEW.md) as a
+    // real login-latency cost that had grown with each history/table added
+    // this session. Each still falls back to an empty/default result
+    // rather than failing the whole session if its table's migration
+    // hasn't been run yet (see the referenced docs for each).
+    final results = await Future.wait([
+      widget.repository.fetchRole(companyId),
+      widget.repository.fetchEmployees(companyId),
+      _chatRepository
+          .fetchRecentMessages(companyId)
+          .catchError((_) => <ChatMessage>[]),
+      _taskRepository.fetchRecentTasks(companyId).catchError((_) => <NpcTask>[]),
+      _usageRepository
+          .fetchUsageSummaries(companyId)
+          .catchError((_) => <String, NpcUsageSummary>{}),
+      _activityRepository
+          .fetchRecentActivity(companyId)
+          .catchError((_) => <ActivityEvent>[]),
+      _boardRepository.fetchTasks(companyId).catchError((_) => <BoardTask>[]),
+    ]);
+    final role = results[0] as CompanyRole;
+    final employees = results[1] as List<AiEmployee>;
+    final chatHistory = results[2] as List<ChatMessage>;
+    final taskHistory = results[3] as List<NpcTask>;
+    final usageSummaries = results[4] as Map<String, NpcUsageSummary>;
+    final activityHistory = results[5] as List<ActivityEvent>;
+    final boardTasks = results[6] as List<BoardTask>;
 
     final multiplayer = MultiplayerChannel(
       client: Supabase.instance.client,
@@ -138,6 +145,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
         employeeRole: employeeRole,
         command: command,
         history: history,
+        companyId: companyId,
       ),
       initialTasks: taskHistory,
       initialUsage: usageSummaries,

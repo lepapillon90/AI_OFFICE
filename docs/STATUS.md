@@ -102,10 +102,18 @@
   - **권한 강화**: (1) 관리자 화면 자체가 대표 전용(`CompanyRole.canManageMembers`), (2) "인사관리자" 초대는 대표만 가능하도록 좁힘 — 이전엔 인사관리자가 다른 사람을 인사관리자로 초대할 수 있는 권한 상승 구멍이 있었음(클라이언트 드롭다운에서 숨기고, RLS `managers_insert_invites` 정책도 서버에서 강제)
   - **진행 중 발견해 고친 버그**: `activity_events.type`의 체크 제약이 `'board'`/`'meeting'` 값을 허용하지 않아서, 이전에 `docs/PHASE7_ACTIVITY.md`의 SQL만 실행한 상태로 업무 보드·회의 기능을 쓴 사용자는 그 활동 기록 저장이 조용히 실패하고 있었을 것 — `docs/PHASE7_ADMIN.md`의 SQL에 제약 재생성 포함
   - 자동 테스트(`test/company_role_test.dart`, `test/activity_log_test.dart`의 actorName 검증)로 커버 — `CompanyRepository`가 실제 `SupabaseClient`에 의존해 관리자 화면의 구성원 목록·역할 변경 UI 자체는 위젯 테스트로 검증 못함(이 프로젝트의 기존 테스트 경계와 동일 — Chat/Task/Usage 등 다른 Supabase 연동 레포지토리들도 위젯 레벨로는 테스트하지 않음), 코드 리뷰로 확인
+- Phase 7 마지막 항목 — 성능·보안·배포 운영 점검 (`docs/PHASE7_OPS_REVIEW.md`, Phase 7 전체 항목 완료)
+  - **보안(실제로 고침)**: `ask-employee` Edge Function이 "로그인한 사용자인지"만 확인하고 "그 회사 구성원인지"는 확인하지 않던 것을 발견 — 다른 회사인 척 직접 호출해 대표님 OpenAI 예산을 소모시킬 수 있던 구멍. 이제 `companyId`를 함께 받아 호출자 JWT로 `company_members` 실제 소속을 확인(403 거절)
+  - **비용/보안(실제로 고침)**: 같은 함수에 회사당 최근 5분·30회 호출 상한 추가(기존 `npc_usage_events` 카운트 기반), 명령 2000자·대화 맥락 턴당 2000자·최대 6턴으로 서버 쪽 강제 절단(클라이언트 제한은 우회 가능하므로 진짜 방어선은 서버)
+  - **성능(실제로 고침)**: `AuthGate._load()`가 역할·로스터·채팅/작업/사용량/활동/보드 이력을 7번 **순차** 조회하던 것 → `Future.wait`로 병렬화(로그인 지연 = 가장 느린 쿼리 하나 수준으로 단축), `BoardRepository.fetchTasks()`에 누락됐던 조회 상한(최근 500건) 추가
+  - **진단만 하고 코드는 안 건드린 것**(라이브 재현·반복 검증 없이 바꾸기엔 위험): Realtime 채널(`office:company:<id>`)이 RLS로 보호되지 않아 companyId를 아는 다른 가입자가 구독 가능한 점, Vercel 빌드가 매번 Flutter SDK 재클론하는 점, 웹 렌더러 미검토
+  - Edge Function 재배포 필요(`docs/PHASE7_OPS_REVIEW.md`) — 재배포 전까지는 새로 추가한 소속 확인/사용량 상한이 적용 안 됨, 다만 클라이언트가 `companyId`를 추가로 보내는 것 자체는 구버전 함수에서 무시되므로 앱은 정상 동작
+  - 자동 테스트(`dart analyze` 전체 통과, `test/board_test.dart`/`test/chat_panel_test.dart`/`test/widget_test.dart`/`test/computer_popup_npc_chat_test.dart` 회귀 없음 확인) — Edge Function의 새 로직(소속 확인·상한)은 배포 후 라이브 호출로 직접 검증 필요(이 세션에서는 파일 변경만, 재배포 전이라 아직 검증 못함)
 
 ## 다음 작업
 
-1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL, `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL, 그리고 **새로 추가된** `npc_tasks`/`npc_usage_events` 테이블·`npc-documents` Storage 버킷 SQL을 아직 안 하셨다면 Supabase SQL Editor/대시보드에서 실행 — 실행 전까지는 작업 이력·사용량이 세션 메모리에만 있다가 새로고침 시 사라지고, "문서 열기" 버튼도 나타나지 않지만 앱 자체는 정상 동작
+1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL, `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL, 그리고 **새로 추가된** `npc_tasks`/`npc_usage_events` 테이블·`npc-documents` Storage 버킷 SQL, `docs/PHASE7_ACTIVITY.md`/`docs/PHASE7_BOARD.md`/`docs/PHASE7_ADMIN.md`의 SQL을 아직 안 하셨다면 Supabase SQL Editor/대시보드에서 실행 — 실행 전까지는 작업 이력·사용량·활동 기록·업무 보드가 세션 메모리에만 있다가 새로고침 시 사라지지만 앱 자체는 정상 동작
+1-1. **가장 시급**: `docs/PHASE7_OPS_REVIEW.md`에 따라 `ask-employee` Edge Function을 재배포해주세요 — 다른 회사인 척 호출해 OpenAI 비용을 소모시킬 수 있던 보안 구멍과 사용량 상한을 이번에 고쳤는데, 재배포 전까지는 적용되지 않습니다
 2. 위 "Phase 5 마무리 점검"의 실제 브라우저 두 개 확인 (제가 자동화 환경에서는 재현 못 함)
 3. **권장**: 실제 브라우저로 2층 컴퓨터 앞에서 `[E]` → "대화하기"/"작업 이력"/"문서 열기" 버튼까지 한 번 직접 클릭해서 확인 (이 세션은 자동화 키보드 이동이 안 돼서 코드 검증만 완료)
 4. Phase 6 나머지(이연): 실제 비용(통화 환산) 계산, 사용량 상한/경고

@@ -8,14 +8,22 @@ class BoardRepository {
 
   final SupabaseClient _client;
 
-  /// All of [companyId]'s board tasks, oldest first.
+  // Board cards are never auto-archived, so without a cap this query (and
+  // the Kanban columns rendering its result) would grow unbounded for a
+  // long-lived company — found during the Phase 7 ops review
+  // (docs/PHASE7_OPS_REVIEW.md).
+  static const _fetchLimit = 500;
+
+  /// The most recent [_fetchLimit] of [companyId]'s board tasks, oldest
+  /// first.
   Future<List<BoardTask>> fetchTasks(String companyId) async {
     final rows = await _client
         .from('board_tasks')
         .select()
         .eq('company_id', companyId)
-        .order('created_at');
-    return rows.map(BoardTask.fromRow).toList();
+        .order('created_at', ascending: false)
+        .limit(_fetchLimit);
+    return rows.map(BoardTask.fromRow).toList().reversed.toList();
   }
 
   Future<void> upsertTask(String companyId, BoardTask task) async {

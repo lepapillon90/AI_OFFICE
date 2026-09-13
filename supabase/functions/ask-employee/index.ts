@@ -3,7 +3,10 @@
 // This runs server-side (Supabase Edge Function / Deno), never in the
 // browser, so the OpenAI API key set via `OPENAI_API_KEY` stays out of the
 // client bundle. See docs/PHASE6_AI_EMPLOYEES.md for how to deploy this
-// function and set that secret.
+// function and set that secret, and docs/PHASE7_OPS_REVIEW.md for why the
+// company-membership check and rate limit below were added.
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +15,21 @@ const corsHeaders = {
 };
 
 const OPENAI_MODEL = "gpt-4o-mini";
+
+// A raw HTTP call (bypassing the app's own UI/typing) could otherwise send
+// an arbitrarily long command or history to inflate token cost per call —
+// these caps are the actual enforcement point; the client-side maxLength
+// on ChatPanel's TextField is just a UX nicety, not a security boundary.
+const MAX_COMMAND_LENGTH = 2000;
+const MAX_HISTORY_TURNS = 6;
+const MAX_HISTORY_TURN_LENGTH = 2000;
+
+// No client is trusted to send its own OpenAI usage count, so this caps
+// how many *actual* OpenAI calls one company can trigger per window,
+// checked against npc_usage_events (the same table OfficeGame already
+// writes one row to per askEmployee attempt, retries included).
+const RATE_LIMIT_MAX_CALLS = 30;
+const RATE_LIMIT_WINDOW_MINUTES = 5;
 
 // ChatPanel renders plain text (no markdown support), so strip common
 // markdown syntax the model might still emit despite the system prompt
@@ -26,44 +44,99 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "content-type": "application/json" },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Supabase's client SDK attaches the signed-in user's JWT automatically;
-  // this only checks that *some* authenticated request is calling in, not
-  // which company the caller belongs to — fine for this MVP since the
-  // company-management UI is itself gated (see docs/PHASE4_SUPABASE.md).
+  // Supabase's platform gateway already rejects a missing/invalid JWT
+  // before this code runs (the function isn't deployed with
+  // --no-verify-jwt), so this only confirms *some* signed-in user of this
+  // Supabase project is calling — it says nothing about which company
+  // they belong to. The membership check below is what actually scopes
+  // this to "a member of the company this command claims to be for".
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "content-type": "application/json" },
-    });
+    return jsonResponse({ error: "unauthorized" }, 401);
   }
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // Both are set automatically for every Edge Function by the Supabase
+    // platform — missing here would mean something is very wrong with the
+    // deployment, not a caller error.
+    return jsonResponse({ error: "server misconfigured" }, 500);
+  }
+
+  // Scoped to the CALLER's own JWT (not a service-role client), so every
+  // query below runs under that user's normal RLS — it can only ever see
+  // rows their own membership policies already allow.
+  const callerClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
   try {
-    const { employeeName, employeeRole, command, history } = await req.json();
-    if (!employeeName || !employeeRole || !command) {
-      return new Response(
-        JSON.stringify({ error: "employeeName, employeeRole, command required" }),
+    const { employeeName, employeeRole, command, history, companyId } =
+      await req.json();
+    if (!employeeName || !employeeRole || !command || !companyId) {
+      return jsonResponse(
+        { error: "employeeName, employeeRole, command, companyId required" },
+        400,
+      );
+    }
+
+    // Confirms the caller is actually a member of companyId — closes the
+    // gap where any signed-in user of this Supabase project (regardless of
+    // which company they belong to, or whether "employeeName" is even on
+    // that company's roster) could otherwise spend the shared
+    // OPENAI_API_KEY's budget by calling this function directly.
+    const { data: membership, error: membershipError } = await callerClient
+      .from("company_members")
+      .select("user_id")
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (membershipError) {
+      return jsonResponse({ error: membershipError.message }, 500);
+    }
+    if (!membership) {
+      return jsonResponse({ error: "not a member of this company" }, 403);
+    }
+
+    // Rate limit: counts this company's actual OpenAI calls in the recent
+    // window (npc_usage_events — one row per askEmployee attempt,
+    // including retries) rather than trusting anything the client sends.
+    const windowStart = new Date(
+      Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60_000,
+    ).toISOString();
+    const { count: recentCalls, error: usageError } = await callerClient
+      .from("npc_usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", companyId)
+      .gte("created_at", windowStart);
+    if (usageError) {
+      return jsonResponse({ error: usageError.message }, 500);
+    }
+    if ((recentCalls ?? 0) >= RATE_LIMIT_MAX_CALLS) {
+      return jsonResponse(
         {
-          status: 400,
-          headers: { ...corsHeaders, "content-type": "application/json" },
+          error:
+            `이 회사는 최근 ${RATE_LIMIT_WINDOW_MINUTES}분 동안 AI 직원 호출 한도(${RATE_LIMIT_MAX_CALLS}회)를 초과했습니다. 잠시 후 다시 시도해주세요.`,
         },
+        429,
       );
     }
 
     const apiKey = Deno.env.get("OPENAI_API_KEY");
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "OPENAI_API_KEY is not configured" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "content-type": "application/json" },
-        },
-      );
+      return jsonResponse({ error: "OPENAI_API_KEY is not configured" }, 500);
     }
 
     const systemPrompt =
@@ -77,8 +150,12 @@ Deno.serve(async (req) => {
       `- 같은 마크다운 기호를 절대 쓰지 말고, 목록도 "1) 항목" 처럼 순수 ` +
       `텍스트로만 작성하세요.`;
 
+    const truncatedCommand = String(command).slice(0, MAX_COMMAND_LENGTH);
+
     // Prior turns with this same employee, so multi-turn follow-ups (e.g.
     // "그럼 그중 두 번째 항목만 더 자세히") have something to refer back to.
+    // Capped in count and per-turn length regardless of what the client
+    // claims — see MAX_HISTORY_* above.
     const historyMessages = Array.isArray(history)
       ? history
           .filter(
@@ -89,7 +166,11 @@ Deno.serve(async (req) => {
                 (turn as { role?: unknown }).role === "assistant") &&
               typeof (turn as { content?: unknown }).content === "string",
           )
-          .map((turn) => ({ role: turn.role, content: turn.content }))
+          .slice(-MAX_HISTORY_TURNS)
+          .map((turn) => ({
+            role: turn.role,
+            content: turn.content.slice(0, MAX_HISTORY_TURN_LENGTH),
+          }))
       : [];
 
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -104,20 +185,14 @@ Deno.serve(async (req) => {
         messages: [
           { role: "system", content: systemPrompt },
           ...historyMessages,
-          { role: "user", content: command },
+          { role: "user", content: truncatedCommand },
         ],
       }),
     });
 
     if (!openaiResponse.ok) {
       const errorBody = await openaiResponse.text();
-      return new Response(
-        JSON.stringify({ error: `OpenAI API error: ${errorBody}` }),
-        {
-          status: 502,
-          headers: { ...corsHeaders, "content-type": "application/json" },
-        },
-      );
+      return jsonResponse({ error: `OpenAI API error: ${errorBody}` }, 502);
     }
 
     const data = await openaiResponse.json();
@@ -126,13 +201,8 @@ Deno.serve(async (req) => {
 
     // OpenAI's chat completions response reports token usage for this call —
     // passed through as-is so the client can track usage/cost per employee.
-    return new Response(JSON.stringify({ reply, usage: data?.usage ?? null }), {
-      headers: { ...corsHeaders, "content-type": "application/json" },
-    });
+    return jsonResponse({ reply, usage: data?.usage ?? null });
   } catch (error) {
-    return new Response(JSON.stringify({ error: String(error) }), {
-      status: 500,
-      headers: { ...corsHeaders, "content-type": "application/json" },
-    });
+    return jsonResponse({ error: String(error) }, 500);
   }
 });
