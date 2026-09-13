@@ -66,8 +66,11 @@ Phase 7의 마지막 항목. 새 기능을 추가하기보다, 지금까지 쌓�
 **추가 SQL** (Supabase SQL Editor에서 실행, 여러 번 실행해도 안전):
 
 ```sql
-alter table realtime.messages enable row level security;
-
+-- realtime.messages는 이미 Supabase가 RLS를 켜둔 테이블이고 소유자가
+-- supabase_realtime_admin이라, 일반 프로젝트 role로는
+-- `alter table ... enable row level security`를 실행할 권한이 없습니다
+-- (42501: must be owner of table messages). RLS는 이미 켜져있으므로
+-- 정책만 추가하면 됩니다.
 drop policy if exists "company_members_realtime_office" on realtime.messages;
 
 -- office:company:<companyId> 토픽만 다룸 — 세 번째 ':' 구분 필드가 companyId.
