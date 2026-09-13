@@ -12,6 +12,7 @@ import 'package:ai_office/game/floors/floor_layout.dart';
 import 'package:ai_office/game/floors/project_room_map.dart';
 import 'package:ai_office/game/interactions/computer_interaction.dart';
 import 'package:ai_office/game/interactions/elevator_interaction.dart';
+import 'package:ai_office/game/interactions/meeting_room_interaction.dart';
 import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
 import 'package:ai_office/game/isometric/iso_projection.dart';
 import 'package:ai_office/game/map/office_layout.dart';
@@ -144,6 +145,10 @@ class OfficeGame extends FlameGame
       ..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
       ..priority = _furniturePriority;
+    // Placed well clear of the desks/lounge furniture, inside the
+    // meeting-room partition (see OfficeLayout.blockers's doc comment).
+    meetingRoom = MeetingRoomInteraction(position: Vector2(1150, 200))
+      ..priority = _furniturePriority;
     player = OfficePlayer(
       position: playerPosition,
       onPositionChanged: _onPlayerMoved,
@@ -157,7 +162,7 @@ class OfficeGame extends FlameGame
       ..forEach((npc) => npc.priority = _npcPriority);
     _floorComponents = {
       Floor.lobby: IsoLobbyScene().createComponents(),
-      Floor.workspace: [OfficeMap(), ...computers, ...npcs],
+      Floor.workspace: [OfficeMap(), ...computers, meetingRoom, ...npcs],
       Floor.projectRoom: [ProjectRoomMap(), ...projectRoomNpcs],
       Floor.executive: [ExecutiveMap(), ...executiveNpcs],
     };
@@ -175,6 +180,7 @@ class OfficeGame extends FlameGame
   late final OfficePlayer player;
   late final List<ComputerInteraction> computers;
   late final ElevatorInteraction elevator;
+  late final MeetingRoomInteraction meetingRoom;
   late final Map<Floor, List<Component>> _floorComponents;
   late List<AiEmployee> _employees;
 
@@ -262,9 +268,19 @@ class OfficeGame extends FlameGame
   Floor _currentFloor = Floor.workspace;
   ComputerInteraction? _nearbyComputer;
   bool _isNearElevator = false;
+  bool _isNearMeetingRoom = false;
   bool _isComputerPopupOpen = false;
   bool _isElevatorPopupOpen = false;
+  bool _isMeetingPopupOpen = false;
   bool _isProfileCardOpen = false;
+
+  /// Who's in the current meeting, by employee id — empty when no meeting
+  /// is running. Ephemeral (in-memory only), like the "작업 중" status
+  /// flicker: what matters getting persisted is the start/end activity log
+  /// entry, not this live set.
+  final Set<String> _meetingParticipantIds = {};
+  final Map<String, NpcStatus> _preMeetingStatus = {};
+  DateTime? _meetingStartedAt;
 
   static const _minZoom = 0.5;
   static const _maxZoom = 2.5;
@@ -293,6 +309,23 @@ class OfficeGame extends FlameGame
 
   /// Whether the elevator's floor-select popup is open.
   bool get isElevatorPopupOpen => _isElevatorPopupOpen;
+
+  /// Whether the player is close enough to use the meeting room table (2F
+  /// only — see [MeetingRoomInteraction]).
+  bool get isMeetingRoomNearby => _isNearMeetingRoom;
+
+  /// Whether the meeting panel is open.
+  bool get isMeetingPopupOpen => _isMeetingPopupOpen;
+
+  /// Whether a meeting is currently running.
+  bool get isMeetingActive => _meetingStartedAt != null;
+
+  /// When the current meeting started, or null if none is running.
+  DateTime? get meetingStartedAt => _meetingStartedAt;
+
+  /// The current meeting's participants (empty if none is running).
+  List<AiEmployee> get meetingParticipants =>
+      _employees.where((e) => _meetingParticipantIds.contains(e.id)).toList();
 
   /// The AI employee assigned to the computer the player is currently near,
   /// or that the open popup refers to.
@@ -324,11 +357,68 @@ class OfficeGame extends FlameGame
   /// Closes the elevator popup and restores normal game input.
   void closeElevatorPopup() => _setElevatorPopupOpen(false);
 
+  /// Opens the meeting panel when the player is in interaction range.
+  void openMeetingPopup() {
+    if (_isNearMeetingRoom && !_isComputerPopupOpen && !_isProfileCardOpen) {
+      _setMeetingPopupOpen(true);
+    }
+  }
+
+  /// Closes the meeting panel and restores normal game input.
+  void closeMeetingPopup() => _setMeetingPopupOpen(false);
+
+  /// Starts a meeting with [participants] (flips each to "회의 중" — reverted
+  /// on [endMeeting] — and logs it to the activity feed). A no-op if a
+  /// meeting is already running or [participants] is empty.
+  void startMeeting(List<AiEmployee> participants) {
+    if (isMeetingActive || participants.isEmpty) {
+      return;
+    }
+    _meetingStartedAt = DateTime.now();
+    _meetingParticipantIds
+      ..clear()
+      ..addAll(participants.map((e) => e.id));
+    for (final employee in participants) {
+      _preMeetingStatus[employee.id] = employee.status;
+      _setEmployeeStatus(employee, NpcStatus.meeting);
+    }
+    _logActivity(
+      ActivityType.meeting,
+      '회의가 시작되었습니다 (참석: ${participants.map((e) => e.name).join(', ')})',
+    );
+    notifyListeners();
+  }
+
+  /// Ends the current meeting, restoring each participant's prior status
+  /// and logging the outcome (including how long it ran) to the activity
+  /// feed. A no-op if no meeting is running.
+  void endMeeting() {
+    if (!isMeetingActive) {
+      return;
+    }
+    final duration = DateTime.now().difference(_meetingStartedAt!);
+    final participants = meetingParticipants;
+    for (final employee in participants) {
+      final previous = _preMeetingStatus[employee.id] ?? NpcStatus.idle;
+      _setEmployeeStatus(employee, previous);
+    }
+    final names = participants.map((e) => e.name).join(', ');
+    _meetingParticipantIds.clear();
+    _preMeetingStatus.clear();
+    _meetingStartedAt = null;
+    _logActivity(
+      ActivityType.meeting,
+      '회의가 종료되었습니다 (참석: $names, ${duration.inMinutes}분 진행)',
+    );
+    notifyListeners();
+  }
+
   /// Moves the player to [target] floor, arriving next to that floor's
   /// elevator. A no-op if already on that floor.
   Future<void> changeFloor(Floor target) async {
     if (target == _currentFloor) {
       closeElevatorPopup();
+      closeMeetingPopup();
       return;
     }
     world.removeAll(_floorComponents[_currentFloor]!);
@@ -347,6 +437,7 @@ class OfficeGame extends FlameGame
     _refreshRemotePlayerVisibility();
     _broadcastState(force: true);
     closeElevatorPopup();
+    closeMeetingPopup();
     notifyListeners();
   }
 
@@ -355,7 +446,7 @@ class OfficeGame extends FlameGame
 
   /// Opens the player's profile card (avatar preview, name, role, status).
   void openProfileCard() {
-    if (_isComputerPopupOpen || _isElevatorPopupOpen) {
+    if (_isComputerPopupOpen || _isElevatorPopupOpen || _isMeetingPopupOpen) {
       return;
     }
     _isProfileCardOpen = true;
@@ -1042,6 +1133,8 @@ class OfficeGame extends FlameGame
         openComputerPopup();
       } else if (_isNearElevator) {
         openElevatorPopup();
+      } else if (_isNearMeetingRoom) {
+        openMeetingPopup();
       }
     } else if (key == LogicalKeyboardKey.escape) {
       if (_isComputerPopupOpen) {
@@ -1049,6 +1142,9 @@ class OfficeGame extends FlameGame
       }
       if (_isElevatorPopupOpen) {
         closeElevatorPopup();
+      }
+      if (_isMeetingPopupOpen) {
+        closeMeetingPopup();
       }
       if (_isProfileCardOpen) {
         closeProfileCard();
@@ -1094,9 +1190,16 @@ class OfficeGame extends FlameGame
   void _onPlayerMoved(Vector2 position) {
     if (_currentFloor == Floor.workspace) {
       _updateComputerProximity(position);
-    } else if (_nearbyComputer != null) {
-      _nearbyComputer = null;
-      notifyListeners();
+      _updateMeetingRoomProximity(position);
+    } else {
+      if (_nearbyComputer != null) {
+        _nearbyComputer = null;
+        notifyListeners();
+      }
+      if (_isNearMeetingRoom) {
+        _isNearMeetingRoom = false;
+        notifyListeners();
+      }
     }
     _updateElevatorProximity(position);
     _updateRenderPriorities();
@@ -1208,6 +1311,15 @@ class OfficeGame extends FlameGame
     notifyListeners();
   }
 
+  void _updateMeetingRoomProximity(Vector2 playerPosition) {
+    final nearby = meetingRoom.isPlayerNearby(playerPosition);
+    if (_isNearMeetingRoom == nearby) {
+      return;
+    }
+    _isNearMeetingRoom = nearby;
+    notifyListeners();
+  }
+
   void _setPlayerHovered(bool hovered) {
     mouseCursor = hovered ? SystemMouseCursors.click : MouseCursor.defer;
   }
@@ -1226,6 +1338,15 @@ class OfficeGame extends FlameGame
       return;
     }
     _isElevatorPopupOpen = value;
+    player.movementEnabled = !value;
+    notifyListeners();
+  }
+
+  void _setMeetingPopupOpen(bool value) {
+    if (_isMeetingPopupOpen == value) {
+      return;
+    }
+    _isMeetingPopupOpen = value;
     player.movementEnabled = !value;
     notifyListeners();
   }

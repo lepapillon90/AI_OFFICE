@@ -1,6 +1,6 @@
 /// What kind of thing happened — used only to pick an icon in the activity
 /// log UI; the human-readable summary always lives in [ActivityEvent.message].
-enum ActivityType { employee, aiCommand, member, board }
+enum ActivityType { employee, aiCommand, member, board, meeting }
 
 extension ActivityTypeName on ActivityType {
   String get name => switch (this) {
@@ -8,12 +8,14 @@ extension ActivityTypeName on ActivityType {
         ActivityType.aiCommand => 'ai_command',
         ActivityType.member => 'member',
         ActivityType.board => 'board',
+        ActivityType.meeting => 'meeting',
       };
 
   static ActivityType parse(String value) => switch (value) {
         'ai_command' => ActivityType.aiCommand,
         'member' => ActivityType.member,
         'board' => ActivityType.board,
+        'meeting' => ActivityType.meeting,
         _ => ActivityType.employee,
       };
 }

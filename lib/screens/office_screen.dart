@@ -6,6 +6,7 @@ import 'package:ai_office/screens/board_panel.dart';
 import 'package:ai_office/screens/chat_panel.dart';
 import 'package:ai_office/screens/computer_popup.dart';
 import 'package:ai_office/screens/elevator_popup.dart';
+import 'package:ai_office/screens/meeting_panel.dart';
 import 'package:ai_office/screens/profile_card.dart';
 import 'package:ai_office/screens/roster_editor_dialog.dart';
 import 'package:flame/game.dart';
@@ -63,6 +64,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
   bool get _anyOverlayOpen =>
       _officeGame.isComputerPopupOpen ||
       _officeGame.isElevatorPopupOpen ||
+      _officeGame.isMeetingPopupOpen ||
       _officeGame.isProfileCardOpen ||
       _officeGame.isChatOpen ||
       _isActivityPanelOpen ||
@@ -238,6 +240,35 @@ class _OfficeScreenState extends State<OfficeScreen> {
                     ),
                   ),
                 ),
+              if (officeGame.isMeetingRoomNearby &&
+                  !officeGame.isMeetingPopupOpen &&
+                  !officeGame.isComputerPopupOpen &&
+                  !officeGame.isElevatorPopupOpen)
+                Positioned(
+                  bottom: 32,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        color: Color(0xCC000000),
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          officeGame.isMeetingActive
+                              ? '[E] 회의 참여 현황 보기'
+                              : '[E] 회의실 이용',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (officeGame.isComputerPopupOpen)
                 ComputerPopup(
                   employee: officeGame.nearbyEmployee!,
@@ -246,6 +277,8 @@ class _OfficeScreenState extends State<OfficeScreen> {
                 ),
               if (officeGame.isElevatorPopupOpen)
                 ElevatorPopup(game: officeGame),
+              if (officeGame.isMeetingPopupOpen)
+                MeetingPanel(game: officeGame, onClose: officeGame.closeMeetingPopup),
               if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
               if (officeGame.isChatOpen) ChatPanel(game: officeGame),
               if (_isActivityPanelOpen)
