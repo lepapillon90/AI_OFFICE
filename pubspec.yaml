@@ -1,0 +1,25 @@
+name: ai_office
+description: Flutter Web shell for AI Office.
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  flame: ^1.20.0
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/tiles/
+    - assets/images/tiles/floor/
+    - assets/images/tiles/walls/
+    - assets/images/characters/
+    - assets/images/objects/
