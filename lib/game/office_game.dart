@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/data/remote_player_state.dart';
+import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/exterior_backdrop.dart';
 import 'package:ai_office/game/floors/executive_map.dart';
 import 'package:ai_office/game/floors/floor.dart';
@@ -79,6 +80,8 @@ class OfficeGame extends FlameGame
         onUsageEvent,
     DocumentGenerator? generateDocument,
     DocumentUrlResolver? resolveDocumentUrl,
+    List<ActivityEvent>? initialActivity,
+    void Function(ActivityEvent event)? onActivityLogged,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
@@ -93,6 +96,8 @@ class OfficeGame extends FlameGame
           onUsageEvent: onUsageEvent,
           generateDocument: generateDocument,
           resolveDocumentUrl: resolveDocumentUrl,
+          initialActivity: initialActivity,
+          onActivityLogged: onActivityLogged,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -112,6 +117,8 @@ class OfficeGame extends FlameGame
     this.onUsageEvent,
     this.generateDocument,
     this.resolveDocumentUrl,
+    List<ActivityEvent>? initialActivity,
+    this.onActivityLogged,
   }) {
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
@@ -121,6 +128,7 @@ class OfficeGame extends FlameGame
     if (initialUsage != null) {
       _usageByEmployee.addAll(initialUsage);
     }
+    _activityLog.addAll(initialActivity ?? const []);
     computers = _buildComputers()
       ..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
@@ -198,6 +206,17 @@ class OfficeGame extends FlameGame
   /// Resolves an [NpcTask.documentPath] to an openable URL — see
   /// [DocumentUrlResolver]. Null outside a signed-in session.
   final DocumentUrlResolver? resolveDocumentUrl;
+
+  /// Called whenever [_logActivity] records a new event, so the host app
+  /// can persist it (e.g. to Supabase's `activity_events` table). Null
+  /// outside a signed-in session.
+  final void Function(ActivityEvent event)? onActivityLogged;
+
+  /// Company-wide activity feed (roster edits, AI command results, ...),
+  /// oldest first — backs the office screen's "알림"/"활동 기록" panel.
+  final List<ActivityEvent> _activityLog = [];
+  static const _activityHistoryLimit = 50;
+  int _unreadActivityCount = 0;
 
   /// Structured command/response records per employee id, most recent
   /// last — backs [tasksFor] (the computer popup's "작업 이력" list) and is
@@ -416,6 +435,44 @@ class OfficeGame extends FlameGame
     );
     onUsageEvent?.call(employeeId, success: success, usage: usage);
   }
+
+  /// The company's activity feed, most recent first — backs the office
+  /// screen's "활동 기록" panel.
+  List<ActivityEvent> get activityLog => List.unmodifiable(_activityLog.reversed);
+
+  /// How many activity events have landed since [markActivityRead] was
+  /// last called — backs the "알림" bell's unread badge.
+  int get unreadActivityCount => _unreadActivityCount;
+
+  /// Clears the unread badge — called when the player opens the activity
+  /// panel.
+  void markActivityRead() {
+    if (_unreadActivityCount == 0) {
+      return;
+    }
+    _unreadActivityCount = 0;
+    notifyListeners();
+  }
+
+  void _logActivity(ActivityType type, String message) {
+    final event = ActivityEvent(
+      id: '${DateTime.now().microsecondsSinceEpoch}-activity',
+      type: type,
+      message: message,
+      createdAt: DateTime.now(),
+    );
+    _activityLog.add(event);
+    if (_activityLog.length > _activityHistoryLimit) {
+      _activityLog.removeAt(0);
+    }
+    _unreadActivityCount++;
+    onActivityLogged?.call(event);
+  }
+
+  /// Trims [text] to [maxLength] characters (plus an ellipsis) so long AI
+  /// commands don't blow out a one-line activity summary.
+  String _truncate(String text, [int maxLength = 40]) =>
+      text.length <= maxLength ? text : '${text.substring(0, maxLength)}...';
 
   /// Resolves [task]'s [NpcTask.documentPath] to an openable URL via
   /// [resolveDocumentUrl], or null if it has no document or no resolver is
@@ -650,6 +707,10 @@ class OfficeGame extends FlameGame
             // No document this time; the chat reply above already landed.
           }
         }
+        _logActivity(
+          ActivityType.aiCommand,
+          '${employee.name}이(가) "${_truncate(command)}" 명령을 완료했습니다',
+        );
       } else {
         replyBody = '응답을 가져오지 못했습니다 (재시도 후에도 실패): $lastError';
         _setEmployeeStatus(employee, NpcStatus.error);
@@ -661,6 +722,10 @@ class OfficeGame extends FlameGame
             errorMessage: '$lastError',
             attempts: maxAttempts,
           ),
+        );
+        _logActivity(
+          ActivityType.aiCommand,
+          '${employee.name}에게 보낸 "${_truncate(command)}" 명령이 실패했습니다',
         );
       }
     }
@@ -724,10 +789,31 @@ class OfficeGame extends FlameGame
     if (index == -1) {
       return;
     }
+    final previous = _employees[index];
     _employees[index] = updated;
     _npcsByWorkstation[updated.workstationId]?.updateEmployee(updated);
     onEmployeeChanged?.call(updated);
+    _logActivity(ActivityType.employee, _describeEmployeeChange(previous, updated));
     notifyListeners();
+  }
+
+  String _describeEmployeeChange(AiEmployee previous, AiEmployee updated) {
+    final changes = <String>[];
+    if (previous.name != updated.name) {
+      changes.add('이름이 "${previous.name}" → "${updated.name}"');
+    }
+    if (previous.role != updated.role) {
+      changes.add('역할이 "${previous.role}" → "${updated.role}"');
+    }
+    if (previous.status != updated.status) {
+      changes.add(
+        '상태가 "${previous.status.displayLabel}" → "${updated.status.displayLabel}"',
+      );
+    }
+    if (changes.isEmpty) {
+      return '${updated.name}의 정보가 수정되었습니다';
+    }
+    return '${updated.name}: ${changes.join(', ')}';
   }
 
   /// Updates just [employee]'s status badge — in memory and on its NPC

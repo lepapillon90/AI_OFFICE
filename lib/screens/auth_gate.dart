@@ -1,3 +1,4 @@
+import 'package:ai_office/data/activity_repository.dart';
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
@@ -6,6 +7,7 @@ import 'package:ai_office/data/npc_command_service.dart';
 import 'package:ai_office/data/npc_document_repository.dart';
 import 'package:ai_office/data/npc_task_repository.dart';
 import 'package:ai_office/data/npc_usage_repository.dart';
+import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
 import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/office_game.dart';
@@ -74,6 +76,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   final _taskRepository = NpcTaskRepository(Supabase.instance.client);
   final _usageRepository = NpcUsageRepository(Supabase.instance.client);
   final _documentRepository = NpcDocumentRepository(Supabase.instance.client);
+  final _activityRepository = ActivityRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -93,6 +96,11 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     final usageSummaries = await _usageRepository
         .fetchUsageSummaries(companyId)
         .catchError((_) => <String, NpcUsageSummary>{});
+    // Same fallback for the activity_events table — see
+    // docs/PHASE7_ACTIVITY.md for the migration.
+    final activityHistory = await _activityRepository
+        .fetchRecentActivity(companyId)
+        .catchError((_) => <ActivityEvent>[]);
 
     final multiplayer = MultiplayerChannel(
       client: Supabase.instance.client,
@@ -146,6 +154,9 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
         result: result,
       ),
       resolveDocumentUrl: (path) => _documentRepository.signedUrl(path),
+      initialActivity: activityHistory,
+      onActivityLogged: (event) =>
+          _activityRepository.logEvent(companyId, event).catchError((_) {}),
     );
 
     return _LoadedSession(

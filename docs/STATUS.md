@@ -78,6 +78,11 @@
   - "작업 확인" → 그 직원의 최근 채팅 응답을 다이얼로그로 표시(`lastReplyFrom`), 대화 이력이 없으면 안내 문구
   - `test/computer_popup_npc_chat_test.dart`로 검증 — 이 세션의 브라우저 자동화가 키보드 이동을 안정적으로 재현하지 못해 실제 클릭 이동으로는 확인하지 못함(코드 경로 자체는 테스트로 확인됨)
   - 진행 중 발견해 고친 버그: `_RoomList`의 `ListTile`이 패널 배경 `DecoratedBox`와 `Material` 사이에 끼어 "ink splashes may be invisible" 경고가 뜨던 문제 → `Material(type: transparency)`로 감싸서 해결
+- Phase 7 착수 — 알림과 활동 기록 (`docs/PHASE7_ACTIVITY.md`)
+  - 직원 정보 수정, AI 직원 명령 성공/실패를 `OfficeGame.activityLog`에 기록 — 화면 우측 상단 알림(🔔) 아이콘 + 안 읽은 개수 배지, 누르면 "활동 기록" 패널
+  - `activity_events` 테이블에 영속화(마이그레이션 SQL은 `docs/PHASE7_ACTIVITY.md`) — 실행 전에도 세션 메모리 기준으로는 정상 동작
+  - 자동 테스트(`test/activity_log_test.dart`)로 로깅·안 읽음 카운트·초기 복원 검증
+  - 이연: 구성원 초대/합류 이벤트는 아직 활동 기록에 안 남음, 안 읽음 상태 자체의 서버 영속화 없음, 실시간(다른 세션 즉시 반영) 아님
 
 ## 다음 작업
 
