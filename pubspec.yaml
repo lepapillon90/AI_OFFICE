@@ -23,6 +23,22 @@ flutter:
     - assets/images/tiles/walls/
     - assets/images/characters/
     - assets/images/objects/
+    - assets/images/office_2f/floors/
+    - assets/images/office_2f/walls/
+    - assets/images/office_2f/glass/
+    - assets/images/office_2f/partitions/
+    - assets/images/office_2f/desks/
+    - assets/images/office_2f/chairs/
+    - assets/images/office_2f/computers/
+    - assets/images/office_2f/plants/
+    - assets/images/office_2f/lights/
+    - assets/images/office_2f/hr/
+    - assets/images/office_2f/development/
+    - assets/images/office_2f/marketing/
+    - assets/images/office_2f/server_room/
+    - assets/images/office_2f/lounge/
+    - assets/images/office_2f/signs/
+    - assets/images/office_2f/branding/
   fonts:
     - family: NotoSansKR
       fonts:
