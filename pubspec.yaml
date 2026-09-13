@@ -37,6 +37,12 @@ flutter:
     - assets/images/office_1f/v3/floor/shallow_water/
     - assets/images/office_1f/v3/floor/stair_landing/
     - assets/images/office_1f/v3/floor/store/
+    - assets/images/office_1f/v4/structure/
+    - assets/images/office_1f/v4/lobby/
+    - assets/images/office_1f/v4/cafe/
+    - assets/images/office_1f/v4/store/
+    - assets/images/office_1f/v4/branding/
+    - assets/images/office_1f/v4/entrance/
     - assets/images/office_2f/walls/
     - assets/images/office_2f/glass/
     - assets/images/office_2f/partitions/
