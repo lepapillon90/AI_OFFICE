@@ -40,3 +40,36 @@ final hash is included in the task handoff).
 The v4 sprites are registered and ready for use, but no first-floor scene or
 placement code was changed by scope; a subsequent task must choose scale,
 anchor, and placement for these sprites.
+
+## Fix round 1: source-label crop cleanup
+
+### Root cause and correction
+
+The confirmed fragments were detached remnants of the category labels in the
+original source sheets. The elevator crop included the lower edge of the
+elevator label, the counter crop included the lower edge of its category label,
+and the entrance planter crop included both its category label and the label
+below the pot.
+
+The three PNGs were regenerated non-destructively from the original sheets
+with tighter bounds. The elevator's intended call indicator and the counter's
+plant top were composited back from their adjacent source pixels, so the
+cleanup does not discard intended artwork. The planter is limited to its plant
+and pot. Manifest paths, source sheets, dimensions used by layout code, and
+all scene code remain unchanged.
+
+### Visual and test verification
+
+- Directly inspected the three corrected PNGs at native resolution.
+- Regenerated the Task 3 renderer-level composition at
+  `build/first_floor_cleanup_composition.png` using
+  `FIRST_FLOOR_PREVIEW`; it shows the repaired elevators, cafe counter, and
+  planter instances without the reported label fragments.
+- Ran
+  `flutter_tools.dart test test/iso_lobby_scene_test.dart test/first_floor_asset_manifest_test.dart --no-pub --reporter expanded`.
+  Result: `00:00 +5: All tests passed!`
+
+### Commit
+
+`fix: remove first-floor v4 crop artifacts` (final hash is included in the
+task handoff).
