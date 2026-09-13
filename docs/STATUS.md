@@ -58,15 +58,22 @@
 - ❌ **다른 사람이 보낸 채팅(공간 채팅/귓속말 불문) 메시지를 이 브라우저가 수신하는 것만 재현 안 됨** — 같은 채널·같은 세션에서 presence는 되는데 채팅 브로드캐스트만 도착하지 않음. 코드(전송 형식, `onBroadcast` 바인딩, RLS 불필요한 public 채널)는 여러 번 검토했고 문제 없음, Dart 클라이언트가 브로드캐스트를 보내는 것도 정상 동작 — 이 자동화 브라우저 환경에서 "받는 쪽"만 안 되는 특이 현상으로 보임 (일반 사용자의 실제 브라우저 두 개에서는 정상 동작할 가능성이 높음)
 - **권장**: 실제 브라우저(또는 폰) 두 개로 각각 로그인해서 한쪽에서 보낸 메시지가 다른 쪽에 실시간으로 뜨는지 딱 한 번만 확인해주세요. 이건 코드를 더 고쳐서 될 문제가 아니라 실제 환경에서 검증이 필요한 항목입니다.
 
+- 컴퓨터 팝업 ↔ AI 직원 채팅 연동 (Phase 6)
+  - "대화하기" → 컴퓨터 팝업을 닫고 그 직원의 "귓속말 · AI" 방을 바로 열어줌 (`OfficeGame.openChatWithEmployee`)
+  - "작업 확인" → 그 직원의 최근 채팅 응답을 다이얼로그로 표시(`lastReplyFrom`), 대화 이력이 없으면 안내 문구
+  - `test/computer_popup_npc_chat_test.dart`로 검증 — 이 세션의 브라우저 자동화가 키보드 이동을 안정적으로 재현하지 못해 실제 클릭 이동으로는 확인하지 못함(코드 경로 자체는 테스트로 확인됨)
+  - 진행 중 발견해 고친 버그: `_RoomList`의 `ListTile`이 패널 배경 `DecoratedBox`와 `Material` 사이에 끼어 "ink splashes may be invisible" 경고가 뜨던 문제 → `Material(type: transparency)`로 감싸서 해결
+
 ## 다음 작업
 
 1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL과 `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL을 아직 안 하셨다면 Supabase SQL Editor에서 실행 — 이미 실행하셨다면 완료 상태
 2. 위 "Phase 5 마무리 점검"의 실제 브라우저 두 개 확인 (제가 자동화 환경에서는 재현 못 함)
-3. Phase 6 나머지: 컴퓨터 팝업(`[E]` 상호작용)에서의 업무 지시는 여전히 placeholder — 채팅 `@멘션`과는 별개 경로. 업무 진행 상태·결과 기록, 오류/재시도/사용량 기록은 미착수
-4. 1·3·4층에 해당 층 용도에 맞는 실제 콘텐츠/NPC 보강 (현재는 장식용 오브젝트만 배치)
+3. **권장**: 실제 브라우저로 2층 컴퓨터 앞에서 `[E]` → "대화하기"/"작업 확인" 버튼까지 한 번 직접 클릭해서 확인 (이 세션은 자동화 키보드 이동이 안 돼서 코드 검증만 완료)
+4. Phase 6 나머지(이연): 업무 진행 상태의 구조화된 기록, 오류/재시도/사용량 추적, 여러 턴에 걸친 대화 맥락 유지
+5. 1·3·4층에 해당 층 용도에 맞는 실제 콘텐츠/NPC 보강 (현재는 장식용 오브젝트만 배치)
 
 ## 검증 기록
 
-- `flutter test`: 30개 통과
+- `flutter test`: 이 세션에서 작성/수정한 파일 관련 테스트(`widget_test.dart`, `computer_interaction_test.dart`, `workstation_test.dart`, `computer_popup_npc_chat_test.dart`) 전부 통과. 전체 스위트는 동시에 진행 중인 다른 작업(isometric 로비)이 같은 브랜치에서 진행형이라 파일별로 나눠 확인 중
 - `dart analyze`: 이상 없음
 - `flutter analyze`: 이 PC의 Flutter 분석 서버 LSP 통신 오류로 진단 전 종료됨 (원인 분석: `docs/KNOWN_ISSUES.md`)
