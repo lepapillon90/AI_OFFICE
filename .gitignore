@@ -7,6 +7,7 @@ dist/
 build/
 out/
 coverage/
+.worktrees/
 
 # Operating-system and editor files
 .DS_Store
