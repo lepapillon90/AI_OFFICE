@@ -1,4 +1,5 @@
 import 'package:ai_office/data/company_repository.dart';
+import 'package:ai_office/data/company_role.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/auth/login_screen.dart';
@@ -46,17 +47,18 @@ class _CompanyLoader extends StatefulWidget {
 }
 
 class _CompanyLoaderState extends State<_CompanyLoader> {
-  late final Future<(String, List<AiEmployee>)> _future = _load();
+  late final Future<(String, CompanyRole, List<AiEmployee>)> _future = _load();
 
-  Future<(String, List<AiEmployee>)> _load() async {
+  Future<(String, CompanyRole, List<AiEmployee>)> _load() async {
     final companyId = await widget.repository.ensureCompany();
+    final role = await widget.repository.fetchRole(companyId);
     final employees = await widget.repository.fetchEmployees(companyId);
-    return (companyId, employees);
+    return (companyId, role, employees);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<(String, List<AiEmployee>)>(
+    return FutureBuilder<(String, CompanyRole, List<AiEmployee>)>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -74,13 +76,14 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final (companyId, employees) = snapshot.data!;
+        final (companyId, role, employees) = snapshot.data!;
         return OfficeScreen(
           game: OfficeGame(
             employees: employees,
             onEmployeeChanged: (employee) =>
                 widget.repository.upsertEmployee(companyId, employee),
           ),
+          canManageRoster: role.canManageRoster,
           onLogout: () => Supabase.instance.client.auth.signOut(),
         );
       },

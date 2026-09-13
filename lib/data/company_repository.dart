@@ -1,3 +1,4 @@
+import 'package:ai_office/data/company_role.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
@@ -33,12 +34,34 @@ class CompanyRepository {
         .single();
     final companyId = created['id'] as String;
 
+    await _client.from('company_members').insert({
+      'company_id': companyId,
+      'user_id': userId,
+      'role': CompanyRole.owner.dbValue,
+    });
+
     await _client.from('employees').insert([
       for (final employee in sampleEmployees)
         _toSeedRow(companyId, employee),
     ]);
 
     return companyId;
+  }
+
+  /// Returns the current user's role within [companyId] ('member' if they
+  /// have no membership row, which shouldn't normally happen).
+  Future<CompanyRole> fetchRole(String companyId) async {
+    final userId = _client.auth.currentUser!.id;
+    final row = await _client
+        .from('company_members')
+        .select('role')
+        .eq('company_id', companyId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (row == null) {
+      return CompanyRole.member;
+    }
+    return CompanyRole.fromDb(row['role'] as String);
   }
 
   /// Fetches the AI employee roster for [companyId].

@@ -9,13 +9,24 @@ import 'package:flutter/material.dart';
 
 /// Hosts the full-screen Flame office experience.
 class OfficeScreen extends StatelessWidget {
-  const OfficeScreen({this.game, this.onLogout, super.key});
+  const OfficeScreen({
+    this.game,
+    this.onLogout,
+    this.canManageRoster = true,
+    super.key,
+  });
 
   final OfficeGame? game;
 
   /// Shown as a logout button in the top bar when provided (i.e. when
   /// hosted behind Supabase auth).
   final VoidCallback? onLogout;
+
+  /// Whether the signed-in user may open the "직원 정보 관리" roster panel —
+  /// true by default so callers without auth (tests, the no-arg
+  /// constructor) keep today's open-by-default behavior. Hosts behind
+  /// Supabase auth should pass the user's actual company role here.
+  final bool canManageRoster;
 
   @override
   Widget build(BuildContext context) {
@@ -53,12 +64,17 @@ class OfficeScreen extends StatelessWidget {
               child: Row(
                 children: [
                   Tooltip(
-                    message: '직원 정보 관리 (대표·인사관리자 전용 예정)',
+                    message: canManageRoster
+                        ? '직원 정보 관리'
+                        : '직원 정보 관리 (대표·인사관리자 전용)',
                     child: IconButton.filled(
-                      onPressed: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => RosterEditorDialog(game: officeGame),
-                      ),
+                      onPressed: canManageRoster
+                          ? () => showDialog<void>(
+                                context: context,
+                                builder: (_) =>
+                                    RosterEditorDialog(game: officeGame),
+                              )
+                          : null,
                       icon: const Icon(Icons.badge_outlined),
                     ),
                   ),
