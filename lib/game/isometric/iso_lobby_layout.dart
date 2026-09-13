@@ -22,13 +22,37 @@ class IsoLobbyPlacement {
 abstract final class IsoLobbyLayout {
   static final Vector2 _worldSize = Vector2(960, 704);
 
+  // Exterior cutouts and their wall faces follow the stepped floor artwork.
+  // Fill the exterior as well as the face so a large move cannot land outside.
+  static const List<Rect> wallBlockers = [
+    Rect.fromLTWH(0, 0, 960, 88),
+    Rect.fromLTWH(0, 88, 352, 68),
+    Rect.fromLTWH(608, 88, 352, 68),
+    Rect.fromLTWH(0, 156, 256, 68),
+    Rect.fromLTWH(704, 156, 256, 68),
+    Rect.fromLTWH(0, 224, 36, 208),
+    Rect.fromLTWH(924, 224, 36, 208),
+    Rect.fromLTWH(0, 432, 240, 272),
+    Rect.fromLTWH(720, 432, 240, 272),
+    Rect.fromLTWH(240, 512, 96, 192),
+    Rect.fromLTWH(624, 512, 96, 192),
+    Rect.fromLTWH(336, 592, 288, 112),
+  ];
+
+  // Bases of the props, excluding their tall canopies and transparent padding.
+  static const List<Rect> furnitureBlockers = [
+    Rect.fromLTWH(400, 192, 160, 96),
+    Rect.fromLTWH(96, 320, 240, 224),
+    Rect.fromLTWH(624, 320, 240, 192),
+    Rect.fromLTWH(400, 392, 160, 88), // Planter bed and surrounding pots.
+    Rect.fromLTWH(634, 520, 220, 104), // Lounge seats and coffee table.
+  ];
+
   static final FloorLayout floorLayout = FloorLayout(
     worldSize: _worldSize.clone(),
     blockers: [
-      ...FloorLayout.perimeterWalls(_worldSize),
-      const Rect.fromLTWH(400, 192, 160, 96),
-      const Rect.fromLTWH(96, 320, 240, 224),
-      const Rect.fromLTWH(624, 320, 240, 192),
+      ...wallBlockers,
+      ...furnitureBlockers,
     ],
     elevatorPosition: Vector2(480, 80),
   );

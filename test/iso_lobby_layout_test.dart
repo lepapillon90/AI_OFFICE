@@ -1,7 +1,53 @@
+import 'package:ai_office/game/floors/floor_layout.dart';
 import 'package:ai_office/game/isometric/iso_lobby_layout.dart';
+import 'package:ai_office/game/player/office_player.dart';
+import 'package:flame/components.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('arrival cannot cross the stepped upper wall into the exterior', () {
+    final player = OfficePlayer(
+      position: Vector2(480, 144),
+      floorLayout: IsoLobbyLayout.floorLayout,
+    );
+
+    player.tryMove(Vector2(-380, 0));
+
+    expect(player.position, Vector2(480, 144));
+    player.tryMove(Vector2(380, 0));
+    expect(player.position, Vector2(480, 144));
+    player.tryMove(Vector2(-60, 0));
+    expect(player.position, Vector2(420, 144));
+  });
+
+  test('planter base blocks crossing but leaves the front aisle open', () {
+    final player = OfficePlayer(
+      position: Vector2(368, 432),
+      floorLayout: IsoLobbyLayout.floorLayout,
+    );
+
+    player.tryMove(Vector2(112, 0));
+    expect(player.position, Vector2(368, 432));
+    player.position = Vector2(400, 500);
+    player.tryMove(Vector2(160, 0));
+    expect(player.position, Vector2(560, 500));
+  });
+
+  test('lounge seats and table block walking across their base', () {
+    final player = OfficePlayer(
+      position: Vector2(580, 560),
+      // Isolate the prop from exterior walls that overlap this artwork.
+      floorLayout: FloorLayout(
+        worldSize: Vector2(960, 704),
+        blockers: IsoLobbyLayout.furnitureBlockers,
+        elevatorPosition: Vector2(480, 80),
+      ),
+    );
+
+    player.tryMove(Vector2(164, 0));
+    expect(player.position, Vector2(580, 560));
+  });
+
   test('the lobby arrival point is inside its world', () {
     final layout = IsoLobbyLayout.floorLayout;
     final arrival = layout.arrivalPosition;

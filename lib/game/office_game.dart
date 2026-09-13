@@ -71,7 +71,8 @@ class OfficeGame extends FlameGame
   }) {
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
-    computers = _buildComputers()..forEach((c) => c.priority = _furniturePriority);
+    computers = _buildComputers()
+      ..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
       ..priority = _furniturePriority;
     player = OfficePlayer(
@@ -136,6 +137,9 @@ class OfficeGame extends FlameGame
   static const _minZoom = 0.5;
   static const _maxZoom = 2.5;
   static const _zoomStep = 0.1;
+  static const _narrowCanvasWidth = 600.0;
+  static const _narrowLobbyZoomFactor = 1.4;
+  double _manualZoom = 1;
 
   /// The floor the player is currently on.
   Floor get currentFloor => _currentFloor;
@@ -202,6 +206,7 @@ class OfficeGame extends FlameGame
     player.position = layout.arrivalPosition.clone();
     elevator.position = layout.elevatorPosition.clone();
     await world.addAll(_floorComponents[target]!);
+    _applyResponsiveZoom();
     camera.setBounds(
       Rectangle.fromLTWH(0, 0, layout.worldSize.x, layout.worldSize.y),
       considerViewport: true,
@@ -343,7 +348,8 @@ class OfficeGame extends FlameGame
     notifyListeners();
 
     if (employee != null && mention!.command.isNotEmpty) {
-      unawaited(_dispatchNpcCommand(employee: employee, command: mention.command));
+      unawaited(
+          _dispatchNpcCommand(employee: employee, command: mention.command));
     }
   }
 
@@ -498,10 +504,31 @@ class OfficeGame extends FlameGame
   }
 
   @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    _applyResponsiveZoom();
+  }
+
+  double get _responsiveZoomFactor => _currentFloor == Floor.lobby &&
+          hasLayout &&
+          canvasSize.x < _narrowCanvasWidth
+      ? _narrowLobbyZoomFactor
+      : 1;
+
+  void _applyResponsiveZoom() {
+    camera.viewfinder.zoom =
+        (_manualZoom * _responsiveZoomFactor).clamp(_minZoom, _maxZoom);
+  }
+
+  @override
   void onScroll(PointerScrollInfo info) {
     final direction = info.scrollDelta.global.y.sign;
     final zoom = camera.viewfinder.zoom - direction * _zoomStep;
     camera.viewfinder.zoom = zoom.clamp(_minZoom, _maxZoom);
+    // Store the user adjustment separately so resizing or a floor change
+    // removes only the automatic narrow-lobby magnification.
+    _manualZoom = (camera.viewfinder.zoom / _responsiveZoomFactor)
+        .clamp(_minZoom, _maxZoom);
   }
 
   /// Applies the computer/elevator interaction keys without creating
@@ -626,6 +653,7 @@ class OfficeGame extends FlameGame
       } else {
         component.applyState(state);
       }
+      _updateRemotePlayerPriority(component);
       final sameFloor = state.floorLevel == _currentFloor.level;
       if (sameFloor && !component.isMounted) {
         world.add(component);
@@ -637,6 +665,7 @@ class OfficeGame extends FlameGame
 
   void _refreshRemotePlayerVisibility() {
     for (final component in _remotePlayers.values) {
+      _updateRemotePlayerPriority(component);
       final sameFloor = component.floorLevel == _currentFloor.level;
       if (sameFloor && !component.isMounted) {
         world.add(component);
@@ -644,6 +673,12 @@ class OfficeGame extends FlameGame
         component.removeFromParent();
       }
     }
+  }
+
+  void _updateRemotePlayerPriority(RemotePlayerComponent component) {
+    component.priority = _currentFloor == Floor.lobby
+        ? IsoProjection.priorityFor(component.position)
+        : _playerPriority;
   }
 
   void _updateComputerProximity(Vector2 playerPosition) {
