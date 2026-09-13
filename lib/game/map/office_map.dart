@@ -13,16 +13,19 @@ class OfficeMap extends PositionComponent {
   Future<void> onLoad() async {
     await super.onLoad();
 
+    final worldWidth = OfficeLayout.worldSize.x;
+    final worldHeight = OfficeLayout.worldSize.y;
+
     await _addFloorTiles();
     await addAll([
       await _sprite(
-          'tiles/walls/wall_00.png', const Rect.fromLTWH(0, 0, 1280, 32)),
+          'tiles/walls/wall_00.png', Rect.fromLTWH(0, 0, worldWidth, 32)),
+      await _sprite('tiles/walls/wall_00.png',
+          Rect.fromLTWH(0, worldHeight - 32, worldWidth, 32)),
       await _sprite(
-          'tiles/walls/wall_00.png', const Rect.fromLTWH(0, 864, 1280, 32)),
-      await _sprite(
-          'tiles/walls/wall_00.png', const Rect.fromLTWH(0, 0, 32, 896)),
-      await _sprite(
-          'tiles/walls/wall_00.png', const Rect.fromLTWH(1248, 0, 32, 896)),
+          'tiles/walls/wall_00.png', Rect.fromLTWH(0, 0, 32, worldHeight)),
+      await _sprite('tiles/walls/wall_00.png',
+          Rect.fromLTWH(worldWidth - 32, 0, 32, worldHeight)),
       await _sprite(
           'tiles/walls/wall_00.png', const Rect.fromLTWH(800, 32, 32, 256)),
       await _sprite(
@@ -49,8 +52,10 @@ class OfficeMap extends PositionComponent {
   }
 
   Future<void> _addFloorTiles() async {
-    for (var y = 32.0; y < 864; y += _tileSize) {
-      for (var x = 32.0; x < 1248; x += _tileSize) {
+    final maxY = OfficeLayout.worldSize.y - 32;
+    final maxX = OfficeLayout.worldSize.x - 32;
+    for (var y = 32.0; y < maxY; y += _tileSize) {
+      for (var x = 32.0; x < maxX; x += _tileSize) {
         await add(
           await _sprite(
             'tiles/floor/floor_00.png',
