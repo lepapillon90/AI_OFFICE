@@ -2,6 +2,7 @@ import 'package:ai_office/data/company_repository.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/activity_panel.dart';
+import 'package:ai_office/screens/admin_panel.dart';
 import 'package:ai_office/screens/board_panel.dart';
 import 'package:ai_office/screens/chat_panel.dart';
 import 'package:ai_office/screens/computer_popup.dart';
@@ -18,6 +19,7 @@ class OfficeScreen extends StatefulWidget {
     this.game,
     this.onLogout,
     this.canManageRoster = true,
+    this.canManageMembers = true,
     this.companyId,
     this.repository,
     super.key,
@@ -34,6 +36,11 @@ class OfficeScreen extends StatefulWidget {
   /// constructor) keep today's open-by-default behavior. Hosts behind
   /// Supabase auth should pass the user's actual company role here.
   final bool canManageRoster;
+
+  /// Whether the signed-in user may open the admin screen (member list,
+  /// role changes) — owner only. Same default-true-for-tests rationale as
+  /// [canManageRoster].
+  final bool canManageMembers;
 
   /// The signed-in user's company id and a repository to manage it — both
   /// null for callers without auth (tests, the no-arg constructor), which
@@ -60,6 +67,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
   // computer/elevator/profile/chat popups which OfficeGame itself tracks.
   bool _isActivityPanelOpen = false;
   bool _isBoardPanelOpen = false;
+  bool _isAdminPanelOpen = false;
 
   bool get _anyOverlayOpen =>
       _officeGame.isComputerPopupOpen ||
@@ -68,7 +76,8 @@ class _OfficeScreenState extends State<OfficeScreen> {
       _officeGame.isProfileCardOpen ||
       _officeGame.isChatOpen ||
       _isActivityPanelOpen ||
-      _isBoardPanelOpen;
+      _isBoardPanelOpen ||
+      _isAdminPanelOpen;
 
   void _reclaimGameFocusIfIdle() {
     if (_anyOverlayOpen || _gameFocusNode.hasFocus) {
@@ -137,6 +146,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
                                     game: officeGame,
                                     companyId: widget.companyId,
                                     repository: widget.repository,
+                                    canGrantHrManager: widget.canManageMembers,
                                   ),
                                 )
                             : null,
@@ -176,6 +186,16 @@ class _OfficeScreenState extends State<OfficeScreen> {
                         ),
                       ),
                     ),
+                    if (widget.canManageMembers) ...[
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: '관리자 화면',
+                        child: IconButton.filled(
+                          onPressed: () => setState(() => _isAdminPanelOpen = true),
+                          icon: const Icon(Icons.admin_panel_settings_outlined),
+                        ),
+                      ),
+                    ],
                     if (widget.onLogout != null) ...[
                       const SizedBox(width: 8),
                       Tooltip(
@@ -290,6 +310,13 @@ class _OfficeScreenState extends State<OfficeScreen> {
                 BoardPanel(
                   game: officeGame,
                   onClose: () => setState(() => _isBoardPanelOpen = false),
+                ),
+              if (_isAdminPanelOpen && widget.companyId != null && widget.repository != null)
+                AdminPanel(
+                  game: officeGame,
+                  companyId: widget.companyId!,
+                  repository: widget.repository!,
+                  onClose: () => setState(() => _isAdminPanelOpen = false),
                 ),
             ],
           );

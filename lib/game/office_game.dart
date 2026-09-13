@@ -575,6 +575,7 @@ class OfficeGame extends FlameGame
       type: type,
       message: message,
       createdAt: DateTime.now(),
+      actorName: player.profile.name,
     );
     _activityLog.add(event);
     if (_activityLog.length > _activityHistoryLimit) {

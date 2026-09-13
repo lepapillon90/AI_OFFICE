@@ -29,4 +29,15 @@ enum CompanyRole {
 
   bool get canManageRoster =>
       this == CompanyRole.owner || this == CompanyRole.hrManager;
+
+  /// Only the owner can see the admin screen (member list/role changes) or
+  /// grant the hr_manager role to someone else — hardening against an
+  /// hr_manager escalating another account (or themselves) to hr_manager.
+  bool get canManageMembers => this == CompanyRole.owner;
+
+  String get displayLabel => switch (this) {
+        CompanyRole.owner => '대표',
+        CompanyRole.hrManager => '인사관리자',
+        CompanyRole.member => '일반 직원',
+      };
 }

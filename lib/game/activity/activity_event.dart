@@ -29,6 +29,7 @@ class ActivityEvent {
     required this.type,
     required this.message,
     required this.createdAt,
+    this.actorName,
   });
 
   final String id;
@@ -39,11 +40,19 @@ class ActivityEvent {
   final String message;
   final DateTime createdAt;
 
+  /// The signed-in player's display name at the time this was logged — the
+  /// "who" half of an audit entry (the "what" is [message]). Null for
+  /// events logged before this field existed. Note this is just a display
+  /// name (from [PlayerProfile], editable in "직원 정보 관리"), not a stable
+  /// user id — see docs/PHASE7_ADMIN.md's deferred-scope note.
+  final String? actorName;
+
   Map<String, dynamic> toRow(String companyId) => {
         'id': id,
         'company_id': companyId,
         'type': type.name,
         'message': message,
+        'actor_name': actorName,
         'created_at': createdAt.toIso8601String(),
       };
 
@@ -51,6 +60,7 @@ class ActivityEvent {
         id: row['id'] as String,
         type: ActivityTypeName.parse(row['type'] as String),
         message: row['message'] as String,
+        actorName: row['actor_name'] as String?,
         createdAt: DateTime.parse(row['created_at'] as String),
       );
 }

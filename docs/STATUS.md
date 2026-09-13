@@ -96,6 +96,12 @@
   - 시작/종료 모두 활동 기록에 남음(새 테이블 불필요 — 기존 `activity_events` 재사용), 동시에 하나의 회의만 가능
   - 자동 테스트(`test/meeting_test.dart`)로 근접 감지·팝업 열기닫기·이동 차단·시작/종료 상태 복원·활동 기록·이연 케이스(참석자 없음, 이미 진행 중) 전부 검증. 이 세션의 브라우저 텍스트 입력/좌표 오차 이슈로 실제 클릭 흐름 검증은 다음 확인 필요
   - 이연: 실제 화상/음성 통화, 회의 예약(캘린더), 진행 중인 회의 자체의 Supabase 영속화, 사람 참석자 지정
+- Phase 7 — 관리자 화면 · 감사 기록 · 권한 강화 (`docs/PHASE7_ADMIN.md`)
+  - **관리자 화면**: 화면 우측 상단 관리자 아이콘(대표에게만 표시) — 실제 로그인 계정(구성원) 목록과 역할, "감사 기록 보기"로 활동 기록 패널 바로 열기. `company_members_with_email` SECURITY DEFINER 함수로 대표만 자기 회사 구성원의 아이디 조회(`auth.users`는 클라이언트에서 직접 조회 불가)
+  - **감사 기록**: 활동 기록에 `actor_name`(행위자) 추가 — 지금까지 "무엇을"만 있던 것에 "누가"까지 표시("OOO · 방금 전")
+  - **권한 강화**: (1) 관리자 화면 자체가 대표 전용(`CompanyRole.canManageMembers`), (2) "인사관리자" 초대는 대표만 가능하도록 좁힘 — 이전엔 인사관리자가 다른 사람을 인사관리자로 초대할 수 있는 권한 상승 구멍이 있었음(클라이언트 드롭다운에서 숨기고, RLS `managers_insert_invites` 정책도 서버에서 강제)
+  - **진행 중 발견해 고친 버그**: `activity_events.type`의 체크 제약이 `'board'`/`'meeting'` 값을 허용하지 않아서, 이전에 `docs/PHASE7_ACTIVITY.md`의 SQL만 실행한 상태로 업무 보드·회의 기능을 쓴 사용자는 그 활동 기록 저장이 조용히 실패하고 있었을 것 — `docs/PHASE7_ADMIN.md`의 SQL에 제약 재생성 포함
+  - 자동 테스트(`test/company_role_test.dart`, `test/activity_log_test.dart`의 actorName 검증)로 커버 — `CompanyRepository`가 실제 `SupabaseClient`에 의존해 관리자 화면의 구성원 목록·역할 변경 UI 자체는 위젯 테스트로 검증 못함(이 프로젝트의 기존 테스트 경계와 동일 — Chat/Task/Usage 등 다른 Supabase 연동 레포지토리들도 위젯 레벨로는 테스트하지 않음), 코드 리뷰로 확인
 
 ## 다음 작업
 

@@ -22,6 +22,8 @@ void main() {
     expect(game.activityLog.first.message, contains('노아'));
     expect(game.activityLog.first.message, contains('회의 중'));
     expect(game.unreadActivityCount, 1);
+    // The audit-log "who" — the signed-in player's current display name.
+    expect(game.activityLog.first.actorName, game.playerProfile.name);
   });
 
   test('markActivityRead clears the unread count without clearing the log',

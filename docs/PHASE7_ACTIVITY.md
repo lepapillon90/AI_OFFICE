@@ -17,8 +17,14 @@ create table if not exists activity_events (
   -- ("<epoch-micros>-activity"), same convention as `messages.id`.
   id text primary key,
   company_id uuid not null references companies(id) on delete cascade,
-  type text not null check (type in ('employee', 'ai_command', 'member')),
+  type text not null check (
+    type in ('employee', 'ai_command', 'member', 'board', 'meeting')
+  ),
   message text not null,
+  -- The signed-in player's display name when this was logged — added in
+  -- docs/PHASE7_ADMIN.md's audit-log pass; included here too so a fresh
+  -- install gets it from the start. Nullable: older rows won't have it.
+  actor_name text,
   created_at timestamptz not null default now()
 );
 

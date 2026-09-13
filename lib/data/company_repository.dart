@@ -1,3 +1,4 @@
+import 'package:ai_office/data/company_member.dart';
 import 'package:ai_office/data/company_role.dart';
 import 'package:ai_office/data/pending_invite.dart';
 import 'package:ai_office/data/username_auth.dart';
@@ -150,6 +151,35 @@ class CompanyRepository {
   /// Withdraws an invite that hasn't been accepted yet.
   Future<void> cancelInvite(String inviteId) async {
     await _client.from('invites').delete().eq('id', inviteId);
+  }
+
+  /// Every signed-in member of [companyId] with their username/role — owner
+  /// only (see docs/PHASE7_ADMIN.md's `company_members_with_email`
+  /// function; a non-owner caller gets an empty list back, since the
+  /// function itself checks ownership).
+  Future<List<CompanyMember>> fetchMembers(String companyId) async {
+    final rows = await _client.rpc<List<dynamic>>(
+      'company_members_with_email',
+      params: {'target_company_id': companyId},
+    );
+    return rows
+        .cast<Map<String, dynamic>>()
+        .map(CompanyMember.fromRow)
+        .toList();
+  }
+
+  /// Changes [userId]'s role within [companyId] — owner only (enforced by
+  /// the existing `owner_manage_members` RLS policy).
+  Future<void> updateMemberRole(
+    String companyId,
+    String userId,
+    CompanyRole role,
+  ) async {
+    await _client
+        .from('company_members')
+        .update({'role': role.dbValue})
+        .eq('company_id', companyId)
+        .eq('user_id', userId);
   }
 
   /// Row for the initial seed insert — omits `id` so Postgres generates a

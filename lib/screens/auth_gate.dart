@@ -52,12 +52,14 @@ class _LoadedSession {
   const _LoadedSession({
     required this.game,
     required this.canManageRoster,
+    required this.canManageMembers,
     required this.multiplayer,
     required this.companyId,
   });
 
   final OfficeGame game;
   final bool canManageRoster;
+  final bool canManageMembers;
   final MultiplayerChannel multiplayer;
   final String companyId;
 }
@@ -174,6 +176,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     return _LoadedSession(
       game: game,
       canManageRoster: role.canManageRoster,
+      canManageMembers: role.canManageMembers,
       multiplayer: multiplayer,
       companyId: companyId,
     );
@@ -209,6 +212,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
         return OfficeScreen(
           game: session.game,
           canManageRoster: session.canManageRoster,
+          canManageMembers: session.canManageMembers,
           onLogout: () => Supabase.instance.client.auth.signOut(),
           companyId: session.companyId,
           repository: widget.repository,

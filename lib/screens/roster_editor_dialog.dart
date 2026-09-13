@@ -16,12 +16,19 @@ class RosterEditorDialog extends StatelessWidget {
     required this.game,
     this.companyId,
     this.repository,
+    this.canGrantHrManager = false,
     super.key,
   });
 
   final OfficeGame game;
   final String? companyId;
   final CompanyRepository? repository;
+
+  /// Whether the current user may invite someone as an hr_manager — owner
+  /// only, so an hr_manager can't create a peer manager (or promote
+  /// themselves). Server-side RLS enforces this too either way; this just
+  /// keeps the option from being offered client-side.
+  final bool canGrantHrManager;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +51,11 @@ class RosterEditorDialog extends StatelessWidget {
                 ),
               if (companyId != null && repository != null) ...[
                 const Divider(height: 32),
-                _InviteSection(companyId: companyId, repository: repository),
+                _InviteSection(
+                  companyId: companyId,
+                  repository: repository,
+                  canGrantHrManager: canGrantHrManager,
+                ),
               ],
             ],
           ),
@@ -206,10 +217,15 @@ class _EmployeeEditorState extends State<_EmployeeEditor> {
 /// Lets the current manager invite a username to join the company, and
 /// shows/withdraws invites that haven't been accepted yet.
 class _InviteSection extends StatefulWidget {
-  const _InviteSection({required this.companyId, required this.repository});
+  const _InviteSection({
+    required this.companyId,
+    required this.repository,
+    required this.canGrantHrManager,
+  });
 
   final String companyId;
   final CompanyRepository repository;
+  final bool canGrantHrManager;
 
   @override
   State<_InviteSection> createState() => _InviteSectionState();
@@ -279,15 +295,20 @@ class _InviteSectionState extends State<_InviteSection> {
             const SizedBox(width: 8),
             DropdownButton<CompanyRole>(
               value: _role,
-              items: const [
-                DropdownMenuItem(
+              items: [
+                const DropdownMenuItem(
                   value: CompanyRole.member,
                   child: Text('일반 직원'),
                 ),
-                DropdownMenuItem(
-                  value: CompanyRole.hrManager,
-                  child: Text('인사관리자'),
-                ),
+                // Only the owner can grant hr_manager — an hr_manager
+                // creating a peer manager (or promoting themselves) would
+                // be a privilege escalation; server-side RLS enforces this
+                // too regardless of what's offered here.
+                if (widget.canGrantHrManager)
+                  const DropdownMenuItem(
+                    value: CompanyRole.hrManager,
+                    child: Text('인사관리자'),
+                  ),
               ],
               onChanged: (role) {
                 if (role != null) {

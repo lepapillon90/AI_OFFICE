@@ -99,6 +99,13 @@ class _ActivityTile extends StatelessWidget {
     return '${diff.inDays}일 전';
   }
 
+  /// "OOO · 방금 전" when the actor is known (the audit-log "who"), else
+  /// just the time (older entries logged before actorName existed).
+  String get _metaLabel {
+    final actor = event.actorName;
+    return actor == null ? _timeLabel : '$actor · $_timeLabel';
+  }
+
   @override
   Widget build(BuildContext context) => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,7 +119,7 @@ class _ActivityTile extends StatelessWidget {
                 Text(event.message, style: const TextStyle(color: Colors.white)),
                 const SizedBox(height: 2),
                 Text(
-                  _timeLabel,
+                  _metaLabel,
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
               ],
