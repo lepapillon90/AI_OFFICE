@@ -25,6 +25,7 @@ flutter:
     - assets/images/characters/
     - assets/images/objects/
     - assets/images/office_2f/floors/
+    - assets/images/office_1f/isometric/
     - assets/images/office_2f/walls/
     - assets/images/office_2f/glass/
     - assets/images/office_2f/partitions/
