@@ -244,7 +244,9 @@ class _InviteSectionState extends State<_InviteSection> {
         role: _role,
       );
       _usernameController.clear();
-      setState(() => _invitesFuture = _loadInvites());
+      setState(() {
+        _invitesFuture = _loadInvites();
+      });
     } catch (e) {
       setState(() => _error = '초대에 실패했습니다: $e');
     }
@@ -252,7 +254,9 @@ class _InviteSectionState extends State<_InviteSection> {
 
   Future<void> _cancelInvite(String inviteId) async {
     await widget.repository.cancelInvite(inviteId);
-    setState(() => _invitesFuture = _loadInvites());
+    setState(() {
+      _invitesFuture = _loadInvites();
+    });
   }
 
   @override

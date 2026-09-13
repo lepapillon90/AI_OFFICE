@@ -155,36 +155,39 @@ drop policy if exists "invitee_select_own_invites" on invites;
 drop policy if exists "invitee_update_own_invites" on invites;
 drop policy if exists "invitee_join_via_invite" on company_members;
 
+-- A policy on `invites` that queries `company_members`, combined with a
+-- policy on `company_members` that queries `invites` (see
+-- "invitee_join_via_invite" below), makes Postgres reject the query with
+-- "infinite recursion detected in policy for relation company_members" —
+-- it can't tell the two tables' policies won't loop forever. A
+-- SECURITY DEFINER function breaks the cycle: it runs with the row
+-- security of its owner (bypassing RLS internally), so referencing it
+-- from a policy doesn't count as the policy itself querying the table.
+create or replace function public.is_company_manager(target_company_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from company_members m
+    where m.company_id = target_company_id
+      and m.user_id = auth.uid()
+      and m.role in ('owner', 'hr_manager')
+  );
+$$;
+
 -- Only the inviting company's owner/hr_manager can see, create, or
 -- withdraw invites for that company.
 create policy "managers_select_invites" on invites
-  for select using (
-    exists (
-      select 1 from company_members m
-      where m.company_id = invites.company_id
-        and m.user_id = auth.uid()
-        and m.role in ('owner', 'hr_manager')
-    )
-  );
+  for select using (is_company_manager(invites.company_id));
 create policy "managers_insert_invites" on invites
   for insert with check (
-    invited_by = auth.uid()
-    and exists (
-      select 1 from company_members m
-      where m.company_id = invites.company_id
-        and m.user_id = auth.uid()
-        and m.role in ('owner', 'hr_manager')
-    )
+    invited_by = auth.uid() and is_company_manager(invites.company_id)
   );
 create policy "managers_delete_invites" on invites
-  for delete using (
-    exists (
-      select 1 from company_members m
-      where m.company_id = invites.company_id
-        and m.user_id = auth.uid()
-        and m.role in ('owner', 'hr_manager')
-    )
-  );
+  for delete using (is_company_manager(invites.company_id));
 
 -- The invited person (matched by their own login email, before they have
 -- any company membership) can see and accept their own pending invite.
