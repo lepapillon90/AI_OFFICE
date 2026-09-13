@@ -10,7 +10,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 /// Hosts the full-screen Flame office experience.
-class OfficeScreen extends StatelessWidget {
+class OfficeScreen extends StatefulWidget {
   const OfficeScreen({
     this.game,
     this.onLogout,
@@ -40,142 +40,185 @@ class OfficeScreen extends StatelessWidget {
   final CompanyRepository? repository;
 
   @override
+  State<OfficeScreen> createState() => _OfficeScreenState();
+}
+
+class _OfficeScreenState extends State<OfficeScreen> {
+  late final OfficeGame _officeGame = widget.game ?? OfficeGame();
+
+  // GameWidget only forwards keyboard events to the game while this node
+  // has focus. A chat/roster text field taking focus (to type into it) and
+  // then leaving the tree (panel closed) doesn't hand focus back on its
+  // own, which would otherwise permanently strand WASD/E/Enter with
+  // nowhere to go. So: whenever nothing overlays the game, claim focus.
+  final _gameFocusNode = FocusNode(debugLabel: 'OfficeGame');
+
+  bool get _anyOverlayOpen =>
+      _officeGame.isComputerPopupOpen ||
+      _officeGame.isElevatorPopupOpen ||
+      _officeGame.isProfileCardOpen ||
+      _officeGame.isChatOpen;
+
+  void _reclaimGameFocusIfIdle() {
+    if (_anyOverlayOpen || _gameFocusNode.hasFocus) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_anyOverlayOpen) {
+        _gameFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _gameFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final officeGame = game ?? OfficeGame();
+    final officeGame = _officeGame;
+    _reclaimGameFocusIfIdle();
 
     return Scaffold(
       body: AnimatedBuilder(
         animation: officeGame,
-        builder: (context, _) => Stack(
-          children: [
-            GameWidget(game: officeGame),
-            Positioned(
-              top: 16,
-              left: 16,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: const Color(0xCC000000),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+        builder: (context, _) {
+          _reclaimGameFocusIfIdle();
+          return Stack(
+            children: [
+              GameWidget(game: officeGame, focusNode: _gameFocusNode),
+              Positioned(
+                top: 16,
+                left: 16,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xCC000000),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    '${officeGame.currentFloor.level}층 · ${officeGame.currentFloor.displayName}',
-                    style: const TextStyle(color: Colors.white),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      '${officeGame.currentFloor.level}층 · ${officeGame.currentFloor.displayName}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Row(
-                children: [
-                  Tooltip(
-                    message: canManageRoster
-                        ? '직원 정보 관리'
-                        : '직원 정보 관리 (대표·인사관리자 전용)',
-                    child: IconButton.filled(
-                      onPressed: canManageRoster
-                          ? () => showDialog<void>(
-                                context: context,
-                                builder: (_) => RosterEditorDialog(
-                                  game: officeGame,
-                                  companyId: companyId,
-                                  repository: repository,
-                                ),
-                              )
-                          : null,
-                      icon: const Icon(Icons.badge_outlined),
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Row(
+                  children: [
+                    Tooltip(
+                      message: widget.canManageRoster
+                          ? '직원 정보 관리'
+                          : '직원 정보 관리 (대표·인사관리자 전용)',
+                      child: IconButton.filled(
+                        onPressed: widget.canManageRoster
+                            ? () => showDialog<void>(
+                                  context: context,
+                                  builder: (_) => RosterEditorDialog(
+                                    game: officeGame,
+                                    companyId: widget.companyId,
+                                    repository: widget.repository,
+                                  ),
+                                )
+                            : null,
+                        icon: const Icon(Icons.badge_outlined),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: officeGame.isChatOpen ? '채팅 닫기' : '공간 채팅',
-                    child: IconButton.filled(
-                      onPressed: officeGame.isChatOpen
-                          ? officeGame.closeChat
-                          : officeGame.openChat,
-                      icon: const Icon(Icons.chat_bubble_outline),
-                    ),
-                  ),
-                  if (onLogout != null) ...[
                     const SizedBox(width: 8),
                     Tooltip(
-                      message: '로그아웃',
+                      message: officeGame.isChatOpen ? '채팅 닫기' : '공간 채팅',
                       child: IconButton.filled(
-                        onPressed: onLogout,
-                        icon: const Icon(Icons.logout),
+                        onPressed: officeGame.isChatOpen
+                            ? officeGame.closeChat
+                            : officeGame.openChat,
+                        icon: const Icon(Icons.chat_bubble_outline),
                       ),
                     ),
+                    if (widget.onLogout != null) ...[
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: '로그아웃',
+                        child: IconButton.filled(
+                          onPressed: widget.onLogout,
+                          icon: const Icon(Icons.logout),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (officeGame.isComputerNearby && !officeGame.isComputerPopupOpen)
-              Positioned(
-                bottom: 32,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      color: Color(0xCC000000),
-                      borderRadius: BorderRadius.all(Radius.circular(8)),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+              if (officeGame.isComputerNearby &&
+                  !officeGame.isComputerPopupOpen)
+                Positioned(
+                  bottom: 32,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        color: Color(0xCC000000),
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
                       ),
-                      child: Text(
-                        '[E] ${officeGame.nearbyEmployee!.name} 컴퓨터 사용',
-                        style: const TextStyle(color: Colors.white),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          '[E] ${officeGame.nearbyEmployee!.name} 컴퓨터 사용',
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            if (officeGame.isElevatorNearby &&
-                !officeGame.isElevatorPopupOpen &&
-                !officeGame.isComputerPopupOpen)
-              Positioned(
-                bottom: 32,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      color: Color(0xCC000000),
-                      borderRadius: BorderRadius.all(Radius.circular(8)),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+              if (officeGame.isElevatorNearby &&
+                  !officeGame.isElevatorPopupOpen &&
+                  !officeGame.isComputerPopupOpen)
+                Positioned(
+                  bottom: 32,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        color: Color(0xCC000000),
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
                       ),
-                      child: Text(
-                        '[E] 엘리베이터 이용',
-                        style: const TextStyle(color: Colors.white),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          '[E] 엘리베이터 이용',
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            if (officeGame.isComputerPopupOpen)
-              ComputerPopup(
-                employee: officeGame.nearbyEmployee!,
-                game: officeGame,
-                onClose: officeGame.closeComputerPopup,
-              ),
-            if (officeGame.isElevatorPopupOpen) ElevatorPopup(game: officeGame),
-            if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
-            if (officeGame.isChatOpen) ChatPanel(game: officeGame),
-          ],
-        ),
+              if (officeGame.isComputerPopupOpen)
+                ComputerPopup(
+                  employee: officeGame.nearbyEmployee!,
+                  game: officeGame,
+                  onClose: officeGame.closeComputerPopup,
+                ),
+              if (officeGame.isElevatorPopupOpen)
+                ElevatorPopup(game: officeGame),
+              if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
+              if (officeGame.isChatOpen) ChatPanel(game: officeGame),
+            ],
+          );
+        },
       ),
     );
   }
