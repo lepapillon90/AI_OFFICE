@@ -2,21 +2,36 @@ import 'package:ai_office/game/map/office_layout.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/services.dart';
 
+typedef PositionChanged = void Function(Vector2 position);
+
 /// A keyboard-controlled office worker that remains inside the walkable map.
 class OfficePlayer extends SpriteComponent with KeyboardHandler {
-  OfficePlayer({Vector2? position})
+  OfficePlayer({Vector2? position, this.onPositionChanged})
       : super(
           position: position ?? OfficeLayout.worldSize.clone() / 2,
           size: _hitboxSize.clone(),
           anchor: Anchor.center,
         );
 
-  OfficePlayer.forTest({required Vector2 position}) : this(position: position);
+  OfficePlayer.forTest({
+    required Vector2 position,
+    PositionChanged? onPositionChanged,
+  }) : this(position: position, onPositionChanged: onPositionChanged);
+
+  final PositionChanged? onPositionChanged;
 
   static final _hitboxSize = OfficeLayout.characterSize;
   static const _speed = 180.0;
 
   Vector2 _direction = Vector2.zero();
+  bool _movementEnabled = true;
+
+  set movementEnabled(bool value) {
+    _movementEnabled = value;
+    if (!value) {
+      _direction = Vector2.zero();
+    }
+  }
 
   @override
   Future<void> onLoad() async {
@@ -29,6 +44,9 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
 
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+    if (!_movementEnabled) {
+      return true;
+    }
     _direction = Vector2(
       _axis(
         keysPressed,
@@ -48,7 +66,7 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
   @override
   void update(double dt) {
     super.update(dt);
-    if (_direction.isZero()) {
+    if (!_movementEnabled || _direction.isZero()) {
       return;
     }
 
@@ -58,6 +76,10 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
 
   /// Moves horizontally then vertically, retaining each axis only if walkable.
   Vector2 tryMove(Vector2 delta) {
+    if (!_movementEnabled) {
+      return position;
+    }
+    final previousPosition = position.clone();
     final horizontal = position.clone()..x += delta.x;
     if (_canTraverse(position, horizontal)) {
       position.x = horizontal.x;
@@ -66,6 +88,9 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
     final vertical = position.clone()..y += delta.y;
     if (_canTraverse(position, vertical)) {
       position.y = vertical.y;
+    }
+    if (position != previousPosition) {
+      onPositionChanged?.call(position);
     }
     return position;
   }
@@ -89,8 +114,9 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
       (start.x > end.x ? start.x : end.x) + _hitboxSize.x / 2,
       (start.y > end.y ? start.y : end.y) + _hitboxSize.y / 2,
     );
-    return OfficeLayout.blockers
-        .every((blocker) => !sweptHitbox.overlaps(blocker));
+    return OfficeLayout.blockers.every(
+      (blocker) => !sweptHitbox.overlaps(blocker),
+    );
   }
 
   bool _canOccupy(Vector2 candidate) {
