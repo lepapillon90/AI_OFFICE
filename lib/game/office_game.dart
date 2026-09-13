@@ -526,6 +526,15 @@ class OfficeGame extends FlameGame
       if (_isChatOpen) {
         closeChat();
       }
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      // Only opens here — while chat is already open, Enter is the
+      // ChatPanel TextField's own submit key (send if there's text, or
+      // close on an empty submit; see ChatPanel._send), which the focused
+      // TextField handles directly rather than this game-level shortcut.
+      if (!_isChatOpen) {
+        openChat();
+      }
     }
   }
 

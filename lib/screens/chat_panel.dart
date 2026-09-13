@@ -105,6 +105,17 @@ class _ChatPanelState extends State<ChatPanel> {
     });
   }
 
+  /// The TextField's Enter/submit handler: sends if there's something to
+  /// send, otherwise treats an empty Enter as "close the chat" — pairs
+  /// with OfficeGame.handleInteractionKey opening it on Enter when closed.
+  void _onSubmitted(String value) {
+    if (value.trim().isEmpty) {
+      widget.game.closeChat();
+      return;
+    }
+    _send();
+  }
+
   void _openRoom(String key, String name) {
     setState(() {
       _selectedRoomKey = key;
@@ -200,6 +211,10 @@ class _ChatPanelState extends State<ChatPanel> {
                     Expanded(
                       child: TextField(
                         controller: _controller,
+                        // So Enter reaches this field (not the game canvas)
+                        // as soon as the panel opens — a second, empty
+                        // Enter then closes it via _onSubmitted.
+                        autofocus: true,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           hintText: _selectedRoomName != null
@@ -209,7 +224,7 @@ class _ChatPanelState extends State<ChatPanel> {
                           isDense: true,
                           border: const OutlineInputBorder(),
                         ),
-                        onSubmitted: (_) => _send(),
+                        onSubmitted: _onSubmitted,
                       ),
                     ),
                     const SizedBox(width: 8),
