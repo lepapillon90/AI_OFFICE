@@ -1,0 +1,5 @@
+{
+  "buildCommand": "bash scripts/vercel_build.sh",
+  "outputDirectory": "build/web",
+  "installCommand": "echo 'flutter pub get runs inside scripts/vercel_build.sh'"
+}
