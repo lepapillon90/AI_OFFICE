@@ -1,5 +1,7 @@
+import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/computer_popup.dart';
+import 'package:ai_office/screens/elevator_popup.dart';
 import 'package:ai_office/screens/profile_card.dart';
 import 'package:ai_office/screens/roster_editor_dialog.dart';
 import 'package:flame/game.dart';
@@ -21,6 +23,26 @@ class OfficeScreen extends StatelessWidget {
         builder: (context, _) => Stack(
           children: [
             GameWidget(game: officeGame),
+            Positioned(
+              top: 16,
+              left: 16,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xCC000000),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    '${officeGame.currentFloor.level}층 · ${officeGame.currentFloor.displayName}',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
             Positioned(
               top: 16,
               right: 16,
@@ -59,11 +81,38 @@ class OfficeScreen extends StatelessWidget {
                   ),
                 ),
               ),
+            if (officeGame.isElevatorNearby &&
+                !officeGame.isElevatorPopupOpen &&
+                !officeGame.isComputerPopupOpen)
+              Positioned(
+                bottom: 32,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0xCC000000),
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        '[E] 엘리베이터 이용',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (officeGame.isComputerPopupOpen)
               ComputerPopup(
                 employee: officeGame.nearbyEmployee!,
                 onClose: officeGame.closeComputerPopup,
               ),
+            if (officeGame.isElevatorPopupOpen) ElevatorPopup(game: officeGame),
             if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
           ],
         ),

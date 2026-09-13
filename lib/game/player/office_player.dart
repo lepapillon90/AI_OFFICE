@@ -1,3 +1,4 @@
+import 'package:ai_office/game/floors/floor_layout.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/name_tag_component.dart';
 import 'package:ai_office/game/player/player_profile.dart';
@@ -17,7 +18,9 @@ class OfficePlayer extends SpriteComponent
     this.onHoverChanged,
     this.onTap,
     PlayerProfile profile = PlayerProfile.initial,
+    FloorLayout? floorLayout,
   })  : _profile = profile,
+        _floorLayout = floorLayout ?? FloorLayouts.workspace,
         super(
           position: position ?? OfficeLayout.worldSize.clone() / 2,
           size: _hitboxSize.clone(),
@@ -40,6 +43,12 @@ class OfficePlayer extends SpriteComponent
 
   static final _hitboxSize = OfficeLayout.characterSize;
   static const _speed = 180.0;
+
+  FloorLayout _floorLayout;
+
+  /// Switches which floor's world size and collision rectangles the
+  /// player's movement is constrained to.
+  void changeFloorLayout(FloorLayout layout) => _floorLayout = layout;
 
   PlayerProfile _profile;
   late final NameTagComponent _nameTag;
@@ -167,7 +176,7 @@ class OfficePlayer extends SpriteComponent
       (start.x > end.x ? start.x : end.x) + _hitboxSize.x / 2,
       (start.y > end.y ? start.y : end.y) + _hitboxSize.y / 2,
     );
-    return OfficeLayout.blockers.every(
+    return _floorLayout.blockers.every(
       (blocker) => !sweptHitbox.overlaps(blocker),
     );
   }
@@ -178,12 +187,13 @@ class OfficePlayer extends SpriteComponent
       width: _hitboxSize.x,
       height: _hitboxSize.y,
     );
+    final worldSize = _floorLayout.worldSize;
     final isInsideWorld = hitbox.left >= 0 &&
         hitbox.top >= 0 &&
-        hitbox.right <= OfficeLayout.worldSize.x &&
-        hitbox.bottom <= OfficeLayout.worldSize.y;
+        hitbox.right <= worldSize.x &&
+        hitbox.bottom <= worldSize.y;
     return isInsideWorld &&
-        OfficeLayout.blockers.every((blocker) => !hitbox.overlaps(blocker));
+        _floorLayout.blockers.every((blocker) => !hitbox.overlaps(blocker));
   }
 
   void _selectDirectionFrame() {

@@ -1,4 +1,10 @@
+import 'package:ai_office/game/floors/executive_map.dart';
+import 'package:ai_office/game/floors/floor.dart';
+import 'package:ai_office/game/floors/floor_layout.dart';
+import 'package:ai_office/game/floors/lobby_map.dart';
+import 'package:ai_office/game/floors/project_room_map.dart';
 import 'package:ai_office/game/interactions/computer_interaction.dart';
+import 'package:ai_office/game/interactions/elevator_interaction.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/map/office_map.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
@@ -7,6 +13,7 @@ import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
 import 'package:ai_office/game/player/player_profile.dart';
+import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
@@ -24,26 +31,41 @@ class OfficeGame extends FlameGame
   OfficeGame._({required Vector2 playerPosition}) {
     _employees = List.of(sampleEmployees);
     computers = _buildComputers();
+    elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition);
     player = OfficePlayer(
       position: playerPosition,
-      onPositionChanged: _updateComputerProximity,
+      onPositionChanged: _onPlayerMoved,
       onHoverChanged: _setPlayerHovered,
       onTap: openProfileCard,
     );
-    _updateComputerProximity(player.position);
+    _floorComponents = {
+      Floor.lobby: [LobbyMap()],
+      Floor.workspace: [OfficeMap(), ...computers, ..._buildNpcs()],
+      Floor.projectRoom: [ProjectRoomMap()],
+      Floor.executive: [ExecutiveMap()],
+    };
+    _onPlayerMoved(player.position);
   }
 
   late final OfficePlayer player;
   late final List<ComputerInteraction> computers;
+  late final ElevatorInteraction elevator;
+  late final Map<Floor, List<Component>> _floorComponents;
   late List<AiEmployee> _employees;
   final Map<String, NpcComponent> _npcsByWorkstation = {};
+  Floor _currentFloor = Floor.workspace;
   ComputerInteraction? _nearbyComputer;
+  bool _isNearElevator = false;
   bool _isComputerPopupOpen = false;
+  bool _isElevatorPopupOpen = false;
   bool _isProfileCardOpen = false;
 
   static const _minZoom = 0.5;
   static const _maxZoom = 2.5;
   static const _zoomStep = 0.1;
+
+  /// The floor the player is currently on.
+  Floor get currentFloor => _currentFloor;
 
   /// The current AI employee roster, keyed by workstation.
   List<AiEmployee> get employees => List.unmodifiable(_employees);
@@ -56,6 +78,12 @@ class OfficeGame extends FlameGame
 
   /// Whether the player is close enough to use a workstation computer.
   bool get isComputerNearby => _nearbyComputer != null;
+
+  /// Whether the player is close enough to use the elevator.
+  bool get isElevatorNearby => _isNearElevator;
+
+  /// Whether the elevator's floor-select popup is open.
+  bool get isElevatorPopupOpen => _isElevatorPopupOpen;
 
   /// The AI employee assigned to the computer the player is currently near,
   /// or that the open popup refers to.
@@ -77,12 +105,44 @@ class OfficeGame extends FlameGame
   /// Closes the computer popup and restores normal game input.
   void closeComputerPopup() => _setComputerPopupOpen(false);
 
+  /// Opens the elevator's floor-select popup when the player is nearby.
+  void openElevatorPopup() {
+    if (_isNearElevator && !_isComputerPopupOpen && !_isProfileCardOpen) {
+      _setElevatorPopupOpen(true);
+    }
+  }
+
+  /// Closes the elevator popup and restores normal game input.
+  void closeElevatorPopup() => _setElevatorPopupOpen(false);
+
+  /// Moves the player to [target] floor, arriving next to that floor's
+  /// elevator. A no-op if already on that floor.
+  Future<void> changeFloor(Floor target) async {
+    if (target == _currentFloor) {
+      closeElevatorPopup();
+      return;
+    }
+    world.removeAll(_floorComponents[_currentFloor]!);
+    _currentFloor = target;
+    final layout = FloorLayouts.forFloor(target);
+    player.changeFloorLayout(layout);
+    player.position = layout.arrivalPosition.clone();
+    await world.addAll(_floorComponents[target]!);
+    camera.setBounds(
+      Rectangle.fromLTWH(0, 0, layout.worldSize.x, layout.worldSize.y),
+      considerViewport: true,
+    );
+    _onPlayerMoved(player.position);
+    closeElevatorPopup();
+    notifyListeners();
+  }
+
   /// Whether the player's profile card is currently open.
   bool get isProfileCardOpen => _isProfileCardOpen;
 
   /// Opens the player's profile card (avatar preview, name, role, status).
   void openProfileCard() {
-    if (_isComputerPopupOpen) {
+    if (_isComputerPopupOpen || _isElevatorPopupOpen) {
       return;
     }
     _isProfileCardOpen = true;
@@ -118,15 +178,12 @@ class OfficeGame extends FlameGame
   Future<void> onLoad() async {
     await super.onLoad();
 
-    final npcs = _buildNpcs();
-    await world.addAll([OfficeMap(), ...computers, player, ...npcs]);
+    await world.addAll(
+      [elevator, player, ..._floorComponents[_currentFloor]!],
+    );
+    final layout = FloorLayouts.forFloor(_currentFloor);
     camera.setBounds(
-      Rectangle.fromLTWH(
-        0,
-        0,
-        OfficeLayout.worldSize.x,
-        OfficeLayout.worldSize.y,
-      ),
+      Rectangle.fromLTWH(0, 0, layout.worldSize.x, layout.worldSize.y),
       considerViewport: true,
     );
     camera.follow(player, snap: true);
@@ -139,12 +196,25 @@ class OfficeGame extends FlameGame
     camera.viewfinder.zoom = zoom.clamp(_minZoom, _maxZoom);
   }
 
-  /// Applies the computer interaction keys without creating presentation UI.
+  /// Applies the computer/elevator interaction keys without creating
+  /// presentation UI.
   void handleInteractionKey(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.keyE && _nearbyComputer != null) {
-      openComputerPopup();
-    } else if (key == LogicalKeyboardKey.escape && _isComputerPopupOpen) {
-      closeComputerPopup();
+    if (key == LogicalKeyboardKey.keyE) {
+      if (_nearbyComputer != null) {
+        openComputerPopup();
+      } else if (_isNearElevator) {
+        openElevatorPopup();
+      }
+    } else if (key == LogicalKeyboardKey.escape) {
+      if (_isComputerPopupOpen) {
+        closeComputerPopup();
+      }
+      if (_isElevatorPopupOpen) {
+        closeElevatorPopup();
+      }
+      if (_isProfileCardOpen) {
+        closeProfileCard();
+      }
     }
   }
 
@@ -162,6 +232,16 @@ class OfficeGame extends FlameGame
   AiEmployee _employeeFor(String workstationId) =>
       _employees.firstWhere((e) => e.workstationId == workstationId);
 
+  void _onPlayerMoved(Vector2 position) {
+    if (_currentFloor == Floor.workspace) {
+      _updateComputerProximity(position);
+    } else if (_nearbyComputer != null) {
+      _nearbyComputer = null;
+      notifyListeners();
+    }
+    _updateElevatorProximity(position);
+  }
+
   void _updateComputerProximity(Vector2 playerPosition) {
     ComputerInteraction? nearby;
     for (final computer in computers) {
@@ -177,6 +257,15 @@ class OfficeGame extends FlameGame
     notifyListeners();
   }
 
+  void _updateElevatorProximity(Vector2 playerPosition) {
+    final nearby = elevator.isPlayerNearby(playerPosition);
+    if (_isNearElevator == nearby) {
+      return;
+    }
+    _isNearElevator = nearby;
+    notifyListeners();
+  }
+
   void _setPlayerHovered(bool hovered) {
     mouseCursor = hovered ? SystemMouseCursors.click : MouseCursor.defer;
   }
@@ -186,6 +275,15 @@ class OfficeGame extends FlameGame
       return;
     }
     _isComputerPopupOpen = value;
+    player.movementEnabled = !value;
+    notifyListeners();
+  }
+
+  void _setElevatorPopupOpen(bool value) {
+    if (_isElevatorPopupOpen == value) {
+      return;
+    }
+    _isElevatorPopupOpen = value;
     player.movementEnabled = !value;
     notifyListeners();
   }
