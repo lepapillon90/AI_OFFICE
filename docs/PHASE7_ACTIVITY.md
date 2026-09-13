@@ -25,6 +25,11 @@ create table if not exists activity_events (
   -- docs/PHASE7_ADMIN.md's audit-log pass; included here too so a fresh
   -- install gets it from the start. Nullable: older rows won't have it.
   actor_name text,
+  -- The signed-in user's stable Supabase auth id when this was logged —
+  -- added in docs/PHASE7_OPS_REVIEW.md's follow-up pass, unlike actor_name
+  -- this never changes if the account is renamed. Nullable: older rows and
+  -- events logged outside a signed-in session (e.g. tests) won't have it.
+  actor_user_id uuid,
   created_at timestamptz not null default now()
 );
 

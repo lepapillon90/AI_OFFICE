@@ -1,6 +1,7 @@
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
+import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/util/open_url.dart';
 import 'package:flutter/material.dart';
@@ -111,8 +112,9 @@ class ComputerPopup extends StatelessWidget {
                   if (usage.calls == 0) {
                     return const SizedBox.shrink();
                   }
-                  final tokenPart =
-                      usage.totalTokens > 0 ? ' · ${usage.totalTokens} 토큰' : '';
+                  final tokenPart = usage.totalTokens > 0
+                      ? ' · ${usage.totalTokens} 토큰 (약 ${formatUsd(usage.estimatedCostUsd)})'
+                      : '';
                   return Text(
                     '호출 ${usage.calls}회 (성공 ${usage.successes} · 실패 '
                     '${usage.failures})$tokenPart',
@@ -228,7 +230,8 @@ class _TaskTile extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                '${task.usage!.totalTokens} 토큰 사용',
+                '${task.usage!.totalTokens} 토큰 사용 '
+                '(약 ${formatUsd(task.usage!.estimatedCostUsd)})',
                 style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ),

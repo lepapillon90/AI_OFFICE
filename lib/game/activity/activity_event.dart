@@ -30,6 +30,7 @@ class ActivityEvent {
     required this.message,
     required this.createdAt,
     this.actorName,
+    this.actorUserId,
   });
 
   final String id;
@@ -41,11 +42,21 @@ class ActivityEvent {
   final DateTime createdAt;
 
   /// The signed-in player's display name at the time this was logged — the
-  /// "who" half of an audit entry (the "what" is [message]). Null for
-  /// events logged before this field existed. Note this is just a display
-  /// name (from [PlayerProfile], editable in "직원 정보 관리"), not a stable
-  /// user id — see docs/PHASE7_ADMIN.md's deferred-scope note.
+  /// human-readable "who" shown in the UI (the "what" is [message]). Null
+  /// for events logged before this field existed. This is just a display
+  /// name (from [PlayerProfile], editable in "직원 정보 관리"), so it can
+  /// drift from the account over time — [actorUserId] is the one that
+  /// can't.
   final String? actorName;
+
+  /// The signed-in user's stable Supabase auth id at log time — unlike
+  /// [actorName], this never changes even if the account is later renamed,
+  /// so it's the field an actual audit trail should key off of. Null
+  /// outside a signed-in session (e.g. tests) or for events logged before
+  /// this field existed. Not shown directly in the UI today; recorded so
+  /// it's available if a real audit tool needs to follow it later — see
+  /// docs/PHASE7_OPS_REVIEW.md.
+  final String? actorUserId;
 
   Map<String, dynamic> toRow(String companyId) => {
         'id': id,
@@ -53,6 +64,7 @@ class ActivityEvent {
         'type': type.name,
         'message': message,
         'actor_name': actorName,
+        'actor_user_id': actorUserId,
         'created_at': createdAt.toIso8601String(),
       };
 
@@ -61,6 +73,7 @@ class ActivityEvent {
         type: ActivityTypeName.parse(row['type'] as String),
         message: row['message'] as String,
         actorName: row['actor_name'] as String?,
+        actorUserId: row['actor_user_id'] as String?,
         createdAt: DateTime.parse(row['created_at'] as String),
       );
 }

@@ -43,6 +43,30 @@ Phase 7의 마지막 항목. 새 기능을 추가하기보다, 지금까지 쌓�
 
 새 DB 마이그레이션은 없습니다 — 기존 테이블(`company_members`, `npc_usage_events`)을 그대로 조회만 합니다.
 
+## 후속 반영 — 위 권장 사항 중 구현한 것
+
+아래는 위 "권장 사항"으로 남겨뒀던 항목 중 이후 실제로 반영한 것입니다.
+
+### 비용 환산 — AI 직원 사용량을 USD로 표시
+
+`ask-employee`가 매 호출마다 돌려주는 프롬프트/완료 토큰 수(`NpcUsage`)에, 이 함수가 쓰는 모델(`gpt-4o-mini`)의 공개 단가를 곱해 대략적인 USD 비용을 계산합니다(`lib/game/npc/npc_usage.dart`의 `estimatedCostUsd`/`formatUsd`). 컴퓨터 팝업의 직원별 누적 사용량과 작업별 사용량 옆에 "약 $0.0012"처럼 표시됩니다. 단가는 이 글을 쓴 시점 기준이라 실제 예산 산정에 쓰려면 최신 단가를 다시 확인해야 합니다 — OpenAI가 가격을 바꿔도 자동으로 반영되지 않습니다.
+
+### 사용량 상한 알림 — 429 응답을 재시도 없이 구분해서 표시
+
+`ask-employee`가 사용량 상한(5분에 30회)으로 429를 돌려주면, 클라이언트가 이를 일반 오류와 구분합니다(`AskEmployeeRateLimitException`, `lib/game/npc/npc_command_errors.dart`). 지금까지는 어떤 실패든 "재시도 후에도 실패" 문구로 뭉뚱그려지고 한 번 재시도까지 했는데, 한도 초과는 **재시도해도 다시 거절될 뿐이므로** 즉시 멈추고 함수가 보낸 메시지("이 회사의 AI 직원 호출 한도를 초과했습니다...")를 그대로 채팅/작업 이력/활동 기록에 남깁니다. 한도 초과로 끝난 시도는 실제 OpenAI 호출이 없었으므로 사용량 집계(`npc_usage_events`)에도 카운트하지 않습니다.
+
+### 감사 기록 — 표시 이름 외에 안정적인 사용자 ID도 기록
+
+`activity_events`에 `actor_user_id` 컬럼을 추가하고, 이벤트를 기록하는 시점의 로그인 세션(`multiplayer.userId`)을 함께 저장합니다(`ActivityEvent.actorUserId`). 기존 `actor_name`은 "직원 정보 관리"에서 바꿀 수 있는 표시 이름이라 시간이 지나면 실제 계정과 어긋날 수 있는데, `actor_user_id`는 Supabase Auth의 고정 ID라 바뀌지 않습니다. 지금 UI에는 아직 노출하지 않고 값만 쌓아두는 단계입니다 — 나중에 실제 감사 도구가 필요해지면 이 컬럼으로 계정을 추적할 수 있습니다.
+
+**추가 SQL** (Supabase SQL Editor에서 실행, 여러 번 실행해도 안전):
+
+```sql
+alter table activity_events add column if not exists actor_user_id uuid;
+```
+
+새 컬럼일 뿐 RLS 정책 변경은 없습니다 — 기존 `activity_events` 정책이 행 전체(모든 컬럼)에 대해 이미 적용됩니다.
+
 ## 점검했지만 지금 당장 고치지 않은 것 (권장 사항)
 
 실제로 검증하지 못한 채 프로덕션 동작을 바꾸는 위험을 피하려고, 아래는 **문제 진단 + 권장안**만 남겨둡니다.
@@ -50,7 +74,6 @@ Phase 7의 마지막 항목. 새 기능을 추가하기보다, 지금까지 쌓�
 - **Realtime 채널이 회사 ID만 알면 누구나 구독 가능**: `MultiplayerChannel`이 쓰는 `office:company:<companyId>` 채널은 Supabase Realtime의 기본 동작상 RLS로 보호되지 않습니다 — 이 프로젝트에 가입한 어떤 사용자든 다른 회사의 UUID를 안다면 그 채널을 구독해 실시간 위치·채팅을 엿볼 수 있습니다. `companyId`가 추측하기 어려운 UUID라 실질적 위험은 낮지만, 완전히 막으려면 Supabase의 "Realtime Authorization"(private 채널 + `realtime.messages`에 대한 RLS 정책)을 설정해야 합니다 — 라이브 배포 환경에서 반복 검증이 필요한 작업이라 이번엔 진단만 하고 넘어갑니다.
 - **Vercel 빌드가 매번 Flutter SDK를 새로 클론**: `scripts/vercel_build.sh`가 캐시 없이 매 배포마다 Flutter stable을 얕은 클론합니다 — 빌드 시간과 GitHub 가용성에 의존적입니다. Vercel 프로젝트 설정에서 빌드 캐시(예: `flutter/` 디렉터리)를 구성하면 개선할 수 있지만, Vercel 대시보드 설정이 필요해 코드만으로는 확인할 수 없습니다.
 - **웹 렌더러 설정 미검토**: `flutter build web --release`가 기본 렌더러 설정 그대로입니다 — Flame 기반 그래픽이 많은 이 앱은 CanvasKit이 더 유리할 수 있는데, 실제 배포 환경에서 비교 없이 바꾸는 건 위험 부담이 있어 권장만 남겨둡니다.
-- **감사 기록(actor_name)이 안정적인 사용자 ID가 아님**: `docs/PHASE7_ADMIN.md`에서 이미 언급 — 표시 이름은 바뀔 수 있어서, 진짜 변경 불가능한 감사 추적이 필요하면 별도로 user_id를 기록해야 합니다.
 
 ## 이연된 범위
 

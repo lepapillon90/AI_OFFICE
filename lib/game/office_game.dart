@@ -19,6 +19,7 @@ import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/map/office_map.dart';
 import 'package:ai_office/game/multiplayer/remote_player_component.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
+import 'package:ai_office/game/npc/npc_command_errors.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/npc_placement.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
@@ -576,6 +577,7 @@ class OfficeGame extends FlameGame
       message: message,
       createdAt: DateTime.now(),
       actorName: player.profile.name,
+      actorUserId: multiplayer?.userId,
     );
     _activityLog.add(event);
     if (_activityLog.length > _activityHistoryLimit) {
@@ -880,6 +882,13 @@ class OfficeGame extends FlameGame
       Object? lastError;
       NpcCommandResult? result;
       var attemptsUsed = 0;
+      // Set when the backend rejected the call before ever reaching the
+      // provider (currently: the per-company rate limit — see
+      // docs/PHASE7_OPS_REVIEW.md). No provider call means no real usage
+      // event to record — logging one anyway would also skew the rate
+      // limit's own count against npc_usage_events — and retrying
+      // immediately would just be rejected again, so this skips that too.
+      var rateLimited = false;
       for (var attempt = 1; attempt <= maxAttempts; attempt++) {
         attemptsUsed = attempt;
         try {
@@ -891,6 +900,10 @@ class OfficeGame extends FlameGame
           );
           _recordUsage(employee.id, success: true, usage: result.usage);
           lastError = null;
+          break;
+        } on AskEmployeeRateLimitException catch (e) {
+          lastError = e;
+          rateLimited = true;
           break;
         } catch (e) {
           _recordUsage(employee.id, success: false);
@@ -941,7 +954,9 @@ class OfficeGame extends FlameGame
           '${employee.name}이(가) "${_truncate(command)}" 명령을 완료했습니다',
         );
       } else {
-        replyBody = '응답을 가져오지 못했습니다 (재시도 후에도 실패): $lastError';
+        replyBody = rateLimited
+            ? '$lastError'
+            : '응답을 가져오지 못했습니다 (재시도 후에도 실패): $lastError';
         _setEmployeeStatus(employee, NpcStatus.error);
         _updateTask(
           employee.id,
@@ -949,12 +964,14 @@ class OfficeGame extends FlameGame
           (task) => task.copyWith(
             status: NpcTaskStatus.error,
             errorMessage: '$lastError',
-            attempts: maxAttempts,
+            attempts: attemptsUsed,
           ),
         );
         _logActivity(
           ActivityType.aiCommand,
-          '${employee.name}에게 보낸 "${_truncate(command)}" 명령이 실패했습니다',
+          rateLimited
+              ? '${employee.name}에게 보낸 명령이 사용량 한도 초과로 거절되었습니다'
+              : '${employee.name}에게 보낸 "${_truncate(command)}" 명령이 실패했습니다',
         );
       }
     }

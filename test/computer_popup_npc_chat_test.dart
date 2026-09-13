@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_office/game/npc/npc_command_errors.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
 import 'package:ai_office/game/npc/npc_usage.dart';
@@ -416,5 +417,46 @@ void main() {
     expect(usage.successes, 2);
     expect(usage.failures, 1);
     expect(usage.totalTokens, 150);
+  });
+
+  testWidgets(
+      'a rate-limited @employee command does not retry, does not count as '
+      'usage, and surfaces the limiter\'s own message', (tester) async {
+    var callCount = 0;
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) {
+        callCount++;
+        return Future<NpcCommandResult>.error(
+          const AskEmployeeRateLimitException('사용량 한도를 초과했습니다.'),
+        );
+      },
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    final hana = game.employees.firstWhere((e) => e.name == '하나');
+    game.sendChatMessage('@하나 상태 보고해줘');
+    await tester.pump();
+    await tester.pump();
+
+    // Exactly one attempt — a rate limit rejects before the provider is
+    // ever called, so an immediate retry would just be rejected again.
+    expect(callCount, 1);
+    expect(game.usageFor(hana).calls, 0);
+
+    final reply = game.lastReplyFrom(hana);
+    expect(reply?.body, '사용량 한도를 초과했습니다.');
+
+    final task = game.tasksFor(hana).first;
+    expect(task.status, NpcTaskStatus.error);
+    expect(task.attempts, 1);
+    expect(task.errorMessage, '사용량 한도를 초과했습니다.');
+
+    expect(game.activityLog.first.message, contains('사용량 한도 초과'));
   });
 }

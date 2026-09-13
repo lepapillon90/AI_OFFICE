@@ -1,3 +1,6 @@
+import 'package:ai_office/data/chat_message.dart';
+import 'package:ai_office/data/multiplayer_channel.dart';
+import 'package:ai_office/data/remote_player_state.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/npc_usage.dart';
@@ -6,6 +9,29 @@ import 'package:ai_office/screens/office_screen.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Bare enough to give OfficeGame a real (non-null) `multiplayer.userId` —
+/// nothing here ever needs to actually connect.
+class _FakeMultiplayerChannel implements MultiplayerChannel {
+  @override
+  final String userId = 'test-user-42';
+
+  @override
+  Future<void> connect({
+    required RemotePlayerState initial,
+    required void Function(Map<String, RemotePlayerState>) onChanged,
+    void Function(ChatMessage)? onChatMessage,
+  }) async {}
+
+  @override
+  void updateState(RemotePlayerState state, {bool force = false}) {}
+
+  @override
+  void sendChat(ChatMessage message) {}
+
+  @override
+  Future<void> disconnect() async {}
+}
 
 void main() {
   test('updateEmployee logs a roster-edit activity event and bumps unread',
@@ -24,6 +50,20 @@ void main() {
     expect(game.unreadActivityCount, 1);
     // The audit-log "who" — the signed-in player's current display name.
     expect(game.activityLog.first.actorName, game.playerProfile.name);
+    // No multiplayer channel in this test, so no stable id to attach.
+    expect(game.activityLog.first.actorUserId, isNull);
+  });
+
+  test(
+      'activity events carry the stable multiplayer user id when a channel '
+      'is connected', () {
+    final game = OfficeGame(multiplayer: _FakeMultiplayerChannel());
+
+    final noah = game.employees.firstWhere((e) => e.name == '노아');
+    game.updateEmployee(noah.copyWith(status: NpcStatus.meeting));
+
+    expect(game.activityLog, hasLength(1));
+    expect(game.activityLog.first.actorUserId, 'test-user-42');
   });
 
   test('markActivityRead clears the unread count without clearing the log',

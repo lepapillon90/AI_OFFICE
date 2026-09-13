@@ -1,3 +1,4 @@
+import 'package:ai_office/game/npc/npc_command_errors.dart';
 import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -17,20 +18,32 @@ class NpcCommandService {
     required String companyId,
     List<Map<String, String>> history = const [],
   }) async {
-    final response = await _client.functions.invoke(
-      'ask-employee',
-      body: {
-        'employeeName': employeeName,
-        'employeeRole': employeeRole,
-        'command': command,
-        'history': history,
-        // Lets the function confirm the caller actually belongs to this
-        // company (and rate-limit per company) instead of trusting any
-        // signed-in user of the Supabase project — see
-        // docs/PHASE7_OPS_REVIEW.md.
-        'companyId': companyId,
-      },
-    );
+    final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'ask-employee',
+        body: {
+          'employeeName': employeeName,
+          'employeeRole': employeeRole,
+          'command': command,
+          'history': history,
+          // Lets the function confirm the caller actually belongs to this
+          // company (and rate-limit per company) instead of trusting any
+          // signed-in user of the Supabase project — see
+          // docs/PHASE7_OPS_REVIEW.md.
+          'companyId': companyId,
+        },
+      );
+    } on FunctionException catch (e) {
+      if (e.status == 429) {
+        final details = e.details;
+        final message = (details is Map && details['error'] is String)
+            ? details['error'] as String
+            : '이 회사의 AI 직원 호출 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+        throw AskEmployeeRateLimitException(message);
+      }
+      rethrow;
+    }
     final data = response.data;
     if (data is Map && data['reply'] is String) {
       return NpcCommandResult(
