@@ -1,8 +1,5 @@
-import 'dart:ui';
-
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:flame/components.dart';
-import 'package:flame/input.dart';
 import 'package:flutter/services.dart';
 
 /// A keyboard-controlled office worker that remains inside the walkable map.
