@@ -44,6 +44,10 @@ class OfficeMap extends PositionComponent {
       await _sprite(
           'objects/computer.png', const Rect.fromLTWH(384, 512, 64, 64)),
       await _sprite('objects/chair.png', const Rect.fromLTWH(384, 576, 64, 64)),
+      await _sprite('objects/desk.png', const Rect.fromLTWH(544, 512, 64, 64)),
+      await _sprite(
+          'objects/computer.png', const Rect.fromLTWH(544, 512, 64, 64)),
+      await _sprite('objects/chair.png', const Rect.fromLTWH(544, 576, 64, 64)),
       await _sprite('objects/sofa.png', const Rect.fromLTWH(960, 480, 128, 64)),
       await _sprite(
           'objects/coffee_machine.png', const Rect.fromLTWH(1088, 480, 64, 64)),

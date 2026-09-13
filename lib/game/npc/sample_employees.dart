@@ -28,4 +28,12 @@ final List<AiEmployee> sampleEmployees = [
     workstationId: Workstation.all[2].id,
     status: NpcStatus.idle,
   ),
+  AiEmployee(
+    id: 'ai-4',
+    name: '하나',
+    role: '인사관리자',
+    provider: 'anthropic',
+    workstationId: Workstation.all[3].id,
+    status: NpcStatus.working,
+  ),
 ];

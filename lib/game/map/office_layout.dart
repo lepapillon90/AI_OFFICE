@@ -33,5 +33,6 @@ abstract final class OfficeLayout {
     Rect.fromLTWH(384, 320, 64, 64),
     Rect.fromLTWH(544, 320, 64, 64),
     Rect.fromLTWH(384, 512, 64, 64),
+    Rect.fromLTWH(544, 512, 64, 64),
   ];
 }

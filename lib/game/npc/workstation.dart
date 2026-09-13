@@ -23,5 +23,6 @@ class Workstation {
     Workstation(id: 'desk-1', deskTopLeft: Vector2(384, 320)),
     Workstation(id: 'desk-2', deskTopLeft: Vector2(544, 320)),
     Workstation(id: 'desk-3', deskTopLeft: Vector2(384, 512)),
+    Workstation(id: 'desk-4', deskTopLeft: Vector2(544, 512)),
   ];
 }

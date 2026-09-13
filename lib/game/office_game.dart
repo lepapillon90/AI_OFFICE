@@ -5,10 +5,11 @@ import 'package:ai_office/game/exterior_backdrop.dart';
 import 'package:ai_office/game/floors/executive_map.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/floors/floor_layout.dart';
-import 'package:ai_office/game/floors/lobby_map.dart';
 import 'package:ai_office/game/floors/project_room_map.dart';
 import 'package:ai_office/game/interactions/computer_interaction.dart';
 import 'package:ai_office/game/interactions/elevator_interaction.dart';
+import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
+import 'package:ai_office/game/isometric/iso_projection.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/map/office_map.dart';
 import 'package:ai_office/game/multiplayer/remote_player_component.dart';
@@ -68,7 +69,7 @@ class OfficeGame extends FlameGame
     )..priority = _playerPriority;
     final npcs = _buildNpcs()..forEach((npc) => npc.priority = _npcPriority);
     _floorComponents = {
-      Floor.lobby: [LobbyMap()],
+      Floor.lobby: IsoLobbyScene().createComponents(),
       Floor.workspace: [OfficeMap(), ...computers, ...npcs],
       Floor.projectRoom: [ProjectRoomMap()],
       Floor.executive: [ExecutiveMap()],
@@ -131,7 +132,7 @@ class OfficeGame extends FlameGame
   bool get isComputerPopupOpen => _isComputerPopupOpen;
 
   /// Whether the player is close enough to use a workstation computer.
-  bool get isComputerNearby => _nearbyComputer != null;
+  bool get isComputerNearby => nearbyEmployee != null;
 
   /// Whether the player is close enough to use the elevator.
   bool get isElevatorNearby => _isNearElevator;
@@ -151,7 +152,7 @@ class OfficeGame extends FlameGame
 
   /// Opens the computer popup when the player is in interaction range.
   void openComputerPopup() {
-    if (_nearbyComputer != null) {
+    if (isComputerNearby) {
       _setComputerPopupOpen(true);
     }
   }
@@ -181,6 +182,7 @@ class OfficeGame extends FlameGame
     final layout = FloorLayouts.forFloor(target);
     player.changeFloorLayout(layout);
     player.position = layout.arrivalPosition.clone();
+    elevator.position = layout.elevatorPosition.clone();
     await world.addAll(_floorComponents[target]!);
     camera.setBounds(
       Rectangle.fromLTWH(0, 0, layout.worldSize.x, layout.worldSize.y),
@@ -321,7 +323,7 @@ class OfficeGame extends FlameGame
   /// presentation UI.
   void handleInteractionKey(LogicalKeyboardKey key) {
     if (key == LogicalKeyboardKey.keyE) {
-      if (_nearbyComputer != null) {
+      if (isComputerNearby) {
         openComputerPopup();
       } else if (_isNearElevator) {
         openElevatorPopup();
@@ -353,8 +355,17 @@ class OfficeGame extends FlameGame
     return super.onKeyEvent(event, keysPressed);
   }
 
-  AiEmployee _employeeFor(String workstationId) =>
-      _employees.firstWhere((e) => e.workstationId == workstationId);
+  /// Null when [workstationId] has no assigned employee yet — e.g. a
+  /// workstation just added to the map before every existing company's
+  /// roster has caught up with a matching seat.
+  AiEmployee? _employeeFor(String workstationId) {
+    for (final employee in _employees) {
+      if (employee.workstationId == workstationId) {
+        return employee;
+      }
+    }
+    return null;
+  }
 
   void _onPlayerMoved(Vector2 position) {
     if (_currentFloor == Floor.workspace) {
@@ -364,7 +375,23 @@ class OfficeGame extends FlameGame
       notifyListeners();
     }
     _updateElevatorProximity(position);
+    _updateRenderPriorities();
     _broadcastState();
+  }
+
+  void _updateRenderPriorities() {
+    if (_currentFloor == Floor.lobby) {
+      player.setRenderPriority(IsoProjection.priorityFor(player.position));
+      elevator.priority = IsoProjection.priorityFor(elevator.position);
+      for (final npc
+          in _floorComponents[Floor.lobby]!.whereType<NpcComponent>()) {
+        npc.setRenderPriority(IsoProjection.priorityFor(npc.position));
+      }
+      return;
+    }
+
+    player.setRenderPriority(_playerPriority);
+    elevator.priority = _furniturePriority;
   }
 
   RemotePlayerState _buildLocalState(String userId) {
