@@ -126,6 +126,17 @@ class _ChatPanelState extends State<ChatPanel> {
     _send();
   }
 
+  /// Switches between 공간 채팅 and 귓속말 · AI. The input's text and focus
+  /// both carry over — the same TextField/controller is shared by both
+  /// tabs (only the message list above it swaps), so there's nothing to
+  /// explicitly preserve; this just makes sure the tab button click itself
+  /// (which briefly focuses the button's own InkWell) doesn't leave the
+  /// input feeling like it lost focus.
+  void _switchTab(int index) {
+    setState(() => _tabIndex = index);
+    _inputFocusNode.requestFocus();
+  }
+
   void _openRoom(String key, String name) {
     setState(() {
       _selectedRoomKey = key;
@@ -139,6 +150,7 @@ class _ChatPanelState extends State<ChatPanel> {
       _selectedRoomKey = null;
       _selectedRoomName = null;
     });
+    _inputFocusNode.requestFocus();
   }
 
   @override
@@ -294,13 +306,13 @@ class _ChatPanelState extends State<ChatPanel> {
                 _TabButton(
                   label: '공간 채팅',
                   selected: _tabIndex == 0,
-                  onTap: () => setState(() => _tabIndex = 0),
+                  onTap: () => _switchTab(0),
                 ),
                 const SizedBox(width: 6),
                 _TabButton(
                   label: '귓속말 · AI',
                   selected: _tabIndex == 1,
-                  onTap: () => setState(() => _tabIndex = 1),
+                  onTap: () => _switchTab(1),
                 ),
               ],
             ),
