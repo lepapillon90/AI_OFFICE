@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum NpcStatus {
   idle,
   working,
@@ -19,6 +21,22 @@ extension NpcStatusDisplay on NpcStatus {
         return '오류';
       case NpcStatus.offline:
         return '퇴근';
+    }
+  }
+
+  /// Color used to represent this status on NPC labels and the computer popup.
+  Color get displayColor {
+    switch (this) {
+      case NpcStatus.idle:
+        return const Color(0xFF9E9E9E);
+      case NpcStatus.working:
+        return const Color(0xFF4CAF50);
+      case NpcStatus.meeting:
+        return const Color(0xFFFFC107);
+      case NpcStatus.error:
+        return const Color(0xFFF44336);
+      case NpcStatus.offline:
+        return const Color(0xFF616161);
     }
   }
 }

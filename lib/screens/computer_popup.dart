@@ -1,9 +1,12 @@
+import 'package:ai_office/game/npc/ai_employee.dart';
+import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:flutter/material.dart';
 
-/// Local-only demonstration controls for the development AI workstation.
+/// Local-only demonstration controls for a workstation's AI employee.
 class ComputerPopup extends StatelessWidget {
-  const ComputerPopup({required this.onClose, super.key});
+  const ComputerPopup({required this.employee, required this.onClose, super.key});
 
+  final AiEmployee employee;
   final VoidCallback onClose;
 
   void _showUnavailableMessage(BuildContext context) {
@@ -34,10 +37,10 @@ class ComputerPopup extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '개발 AI',
-                        style: TextStyle(
+                        employee.name,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -52,10 +55,17 @@ class ComputerPopup extends StatelessWidget {
                     ),
                   ],
                 ),
+                Text(
+                  employee.role,
+                  style: const TextStyle(color: Colors.white70),
+                ),
                 const SizedBox(height: 8),
-                const Text(
-                  '대기 중',
-                  style: TextStyle(color: Color(0xFF81F495)),
+                Text(
+                  employee.displayStatus,
+                  style: TextStyle(
+                    color: employee.status.displayColor,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 const Text(

@@ -25,16 +25,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('shows the development AI popup when the game interaction opens',
+  testWidgets(
+      'shows the assigned AI employee popup when the game interaction opens',
       (tester) async {
     final game = OfficeGame.forTest(playerPosition: Vector2(430, 350));
     game.openComputerPopup();
 
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
 
-    expect(find.text('개발 AI'), findsOneWidget);
-    expect(find.text('대기 중'), findsOneWidget);
-    expect(find.text('업무 지시'), findsOneWidget);
+    expect(find.text('리아'), findsOneWidget);
+    expect(find.text('백엔드 개발자'), findsOneWidget);
+    expect(find.text('작업 중'), findsOneWidget);
     expect(find.text('대화하기'), findsOneWidget);
     expect(find.text('작업 확인'), findsOneWidget);
   });
@@ -45,10 +46,10 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
 
-    expect(find.text('[E] 컴퓨터 사용'), findsOneWidget);
+    expect(find.text('[E] 리아 컴퓨터 사용'), findsOneWidget);
     game.openComputerPopup();
     await tester.pump();
-    expect(find.text('[E] 컴퓨터 사용'), findsNothing);
+    expect(find.text('[E] 리아 컴퓨터 사용'), findsNothing);
   });
 
   testWidgets('close button dismisses the computer popup', (tester) async {
@@ -60,7 +61,7 @@ void main() {
     await tester.pump();
 
     expect(game.isComputerPopupOpen, isFalse);
-    expect(find.text('개발 AI'), findsNothing);
-    expect(find.text('[E] 컴퓨터 사용'), findsOneWidget);
+    expect(find.text('리아'), findsNothing);
+    expect(find.text('[E] 리아 컴퓨터 사용'), findsOneWidget);
   });
 }

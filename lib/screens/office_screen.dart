@@ -20,31 +20,34 @@ class OfficeScreen extends StatelessWidget {
           children: [
             GameWidget(game: officeGame),
             if (officeGame.isComputerNearby && !officeGame.isComputerPopupOpen)
-              const Positioned(
+              Positioned(
                 bottom: 32,
                 left: 0,
                 right: 0,
                 child: Center(
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: Color(0xCC000000),
                       borderRadius: BorderRadius.all(Radius.circular(8)),
                     ),
                     child: Padding(
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 10,
                       ),
                       child: Text(
-                        '[E] 컴퓨터 사용',
-                        style: TextStyle(color: Colors.white),
+                        '[E] ${officeGame.nearbyEmployee!.name} 컴퓨터 사용',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
                   ),
                 ),
               ),
             if (officeGame.isComputerPopupOpen)
-              ComputerPopup(onClose: officeGame.closeComputerPopup),
+              ComputerPopup(
+                employee: officeGame.nearbyEmployee!,
+                onClose: officeGame.closeComputerPopup,
+              ),
           ],
         ),
       ),

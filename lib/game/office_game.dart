@@ -1,6 +1,7 @@
 import 'package:ai_office/game/interactions/computer_interaction.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/map/office_map.dart';
+import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
@@ -20,7 +21,7 @@ class OfficeGame extends FlameGame
       : this._(playerPosition: playerPosition);
 
   OfficeGame._({required Vector2 playerPosition}) {
-    computerInteraction = ComputerInteraction(position: Vector2(400, 350));
+    computers = _buildComputers();
     player = OfficePlayer(
       position: playerPosition,
       onPositionChanged: _updateComputerProximity,
@@ -29,8 +30,8 @@ class OfficeGame extends FlameGame
   }
 
   late final OfficePlayer player;
-  late final ComputerInteraction computerInteraction;
-  bool _isPlayerNearComputer = false;
+  late final List<ComputerInteraction> computers;
+  ComputerInteraction? _nearbyComputer;
   bool _isComputerPopupOpen = false;
 
   static const _minZoom = 0.5;
@@ -40,12 +41,16 @@ class OfficeGame extends FlameGame
   /// Whether the computer interaction state is currently open.
   bool get isComputerPopupOpen => _isComputerPopupOpen;
 
-  /// Whether the player is close enough to use the computer.
-  bool get isComputerNearby => _isPlayerNearComputer;
+  /// Whether the player is close enough to use a workstation computer.
+  bool get isComputerNearby => _nearbyComputer != null;
+
+  /// The AI employee assigned to the computer the player is currently near,
+  /// or that the open popup refers to.
+  AiEmployee? get nearbyEmployee => _nearbyComputer?.employee;
 
   /// Opens the computer popup when the player is in interaction range.
   void openComputerPopup() {
-    if (_isPlayerNearComputer) {
+    if (_nearbyComputer != null) {
       _setComputerPopupOpen(true);
     }
   }
@@ -58,7 +63,7 @@ class OfficeGame extends FlameGame
     await super.onLoad();
 
     await world.addAll(
-      [OfficeMap(), computerInteraction, player, ..._buildNpcs()],
+      [OfficeMap(), ...computers, player, ..._buildNpcs()],
     );
     camera.setBounds(
       Rectangle.fromLTWH(
@@ -81,7 +86,7 @@ class OfficeGame extends FlameGame
 
   /// Applies the computer interaction keys without creating presentation UI.
   void handleInteractionKey(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.keyE && _isPlayerNearComputer) {
+    if (key == LogicalKeyboardKey.keyE && _nearbyComputer != null) {
       openComputerPopup();
     } else if (key == LogicalKeyboardKey.escape && _isComputerPopupOpen) {
       closeComputerPopup();
@@ -100,11 +105,17 @@ class OfficeGame extends FlameGame
   }
 
   void _updateComputerProximity(Vector2 playerPosition) {
-    final isNearby = computerInteraction.isPlayerNearby(playerPosition);
-    if (_isPlayerNearComputer == isNearby) {
+    ComputerInteraction? nearby;
+    for (final computer in computers) {
+      if (computer.isPlayerNearby(playerPosition)) {
+        nearby = computer;
+        break;
+      }
+    }
+    if (_nearbyComputer == nearby) {
       return;
     }
-    _isPlayerNearComputer = isNearby;
+    _nearbyComputer = nearby;
     notifyListeners();
   }
 
@@ -115,6 +126,18 @@ class OfficeGame extends FlameGame
     _isComputerPopupOpen = value;
     player.movementEnabled = !value;
     notifyListeners();
+  }
+
+  List<ComputerInteraction> _buildComputers() {
+    final employeesByWorkstation = {
+      for (final employee in sampleEmployees) employee.workstationId: employee,
+    };
+    return Workstation.all
+        .map((workstation) => ComputerInteraction(
+              position: workstation.computerPosition,
+              employee: employeesByWorkstation[workstation.id]!,
+            ))
+        .toList();
   }
 
   List<NpcComponent> _buildNpcs() {

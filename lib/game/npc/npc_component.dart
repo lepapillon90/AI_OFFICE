@@ -1,5 +1,6 @@
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
+import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
@@ -19,14 +20,6 @@ class NpcComponent extends PositionComponent {
   late final SpriteComponent _sprite;
   late final TextComponent _statusLabel;
 
-  static final _statusStyle = TextPaint(
-    style: TextStyle(
-      color: Colors.white,
-      fontSize: 12,
-      backgroundColor: Colors.black54,
-    ),
-  );
-
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -43,7 +36,14 @@ class NpcComponent extends PositionComponent {
       text: employee.displayStatus,
       anchor: Anchor.bottomCenter,
       position: Vector2(size.x / 2, -4),
-      textRenderer: _statusStyle,
+      textRenderer: TextPaint(
+        style: TextStyle(
+          color: employee.status.displayColor,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.black54,
+        ),
+      ),
     );
 
     await addAll([_sprite, _statusLabel]);
