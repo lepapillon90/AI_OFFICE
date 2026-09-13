@@ -55,6 +55,46 @@ Phase 7의 마지막 항목. 새 기능을 추가하기보다, 지금까지 쌓�
 
 `ask-employee`가 사용량 상한(5분에 30회)으로 429를 돌려주면, 클라이언트가 이를 일반 오류와 구분합니다(`AskEmployeeRateLimitException`, `lib/game/npc/npc_command_errors.dart`). 지금까지는 어떤 실패든 "재시도 후에도 실패" 문구로 뭉뚱그려지고 한 번 재시도까지 했는데, 한도 초과는 **재시도해도 다시 거절될 뿐이므로** 즉시 멈추고 함수가 보낸 메시지("이 회사의 AI 직원 호출 한도를 초과했습니다...")를 그대로 채팅/작업 이력/활동 기록에 남깁니다. 한도 초과로 끝난 시도는 실제 OpenAI 호출이 없었으므로 사용량 집계(`npc_usage_events`)에도 카운트하지 않습니다.
 
+### 웹 렌더러 — 이미 CanvasKit으로 고정돼있음을 확인
+
+이 프로젝트가 쓰는 Flutter 3.47.4에서 `flutter build web --help`를 직접 확인해보니, 예전 버전에 있던 `--web-renderer`(auto/html/canvaskit 선택) 플래그가 이제 없습니다 — 최근 Flutter는 `flutter build web`의 기본이자 유일한 렌더러가 CanvasKit이고, 대신 WebAssembly로 컴파일하는 `--wasm` 옵션(아직 실험적, 브라우저 WASM GC 지원 필요)만 별도로 존재합니다. 즉 "권장 사항"으로 남겨뒀던 "Flame 그래픽에 CanvasKit이 유리할 수 있다"는 이미 기본값으로 충족돼있어서, `scripts/vercel_build.sh`나 `web/index.html`을 바꿀 필요가 없었습니다. `--wasm`으로 전환하는 건 별도의 실제 성능 비교가 필요한 선택이라 이번 범위에 넣지 않습니다.
+
+### Realtime 채널 접근 제어 — 회사 ID만 알면 구독 가능하던 문제
+
+`MultiplayerChannel`이 만드는 `office:company:<companyId>` 채널을 Supabase의 "Realtime Authorization" 기능으로 잠갔습니다. 클라이언트가 `RealtimeChannelConfig(private: true)`로 채널을 열면, Supabase가 구독/브로드캐스트/presence 트래킹 전에 서버 쪽 `realtime.messages` 테이블의 RLS 정책으로 그 채널 토픽에 대한 접근을 허가하는지 확인합니다 — 즉 지금까지처럼 `companyId` UUID만 알면 누구나 구독할 수 있던 것과 달리, **그 회사의 실제 구성원(`company_members`)만** 채널을 열 수 있게 됩니다.
+
+**추가 SQL** (Supabase SQL Editor에서 실행, 여러 번 실행해도 안전):
+
+```sql
+alter table realtime.messages enable row level security;
+
+drop policy if exists "company_members_realtime_office" on realtime.messages;
+
+-- office:company:<companyId> 토픽만 다룸 — 세 번째 ':' 구분 필드가 companyId.
+-- realtime.topic()은 클라이언트가 channel()에 넘긴 이름 그대로이므로, 이 앱이
+-- 쓰는 이름 규칙과 정확히 맞아야 함 (lib/data/multiplayer_channel.dart 참고).
+create policy "company_members_realtime_office" on realtime.messages
+  for all
+  using (
+    split_part(realtime.topic(), ':', 1) = 'office'
+    and exists (
+      select 1 from company_members m
+      where m.user_id = auth.uid()
+        and m.company_id::text = split_part(realtime.topic(), ':', 3)
+    )
+  )
+  with check (
+    split_part(realtime.topic(), ':', 1) = 'office'
+    and exists (
+      select 1 from company_members m
+      where m.user_id = auth.uid()
+        and m.company_id::text = split_part(realtime.topic(), ':', 3)
+    )
+  );
+```
+
+**주의**: 이 SQL을 실행하고 클라이언트가 재배포된 뒤에는, `company_members`에 없는 사용자는 그 회사의 `office:company:<companyId>` 채널을 아예 구독할 수 없습니다 — 프론트/백엔드가 같이 바뀌어야 하는 변경이라, 순서가 어긋나면(SQL만 먼저 실행하고 예전 클라이언트가 아직 `private: true` 없이 붙어있는 경우 등) 정상 동작에 영향은 없습니다(예전 클라이언트는 여전히 공개 채널로 붙으므로). 반대로 새 클라이언트가 먼저 배포되고 이 SQL이 아직 실행 안 됐다면, `private: true` 채널이 RLS 정책 없이는 아무도(정당한 구성원 포함) 구독하지 못해 실시간 동기화가 전부 끊깁니다 — **반드시 이 SQL을 먼저 실행한 뒤에 새 클라이언트를 배포/새로고침해주세요.**
+
 ### 감사 기록 — 표시 이름 외에 안정적인 사용자 ID도 기록
 
 `activity_events`에 `actor_user_id` 컬럼을 추가하고, 이벤트를 기록하는 시점의 로그인 세션(`multiplayer.userId`)을 함께 저장합니다(`ActivityEvent.actorUserId`). 기존 `actor_name`은 "직원 정보 관리"에서 바꿀 수 있는 표시 이름이라 시간이 지나면 실제 계정과 어긋날 수 있는데, `actor_user_id`는 Supabase Auth의 고정 ID라 바뀌지 않습니다. 지금 UI에는 아직 노출하지 않고 값만 쌓아두는 단계입니다 — 나중에 실제 감사 도구가 필요해지면 이 컬럼으로 계정을 추적할 수 있습니다.
@@ -71,9 +111,7 @@ alter table activity_events add column if not exists actor_user_id uuid;
 
 실제로 검증하지 못한 채 프로덕션 동작을 바꾸는 위험을 피하려고, 아래는 **문제 진단 + 권장안**만 남겨둡니다.
 
-- **Realtime 채널이 회사 ID만 알면 누구나 구독 가능**: `MultiplayerChannel`이 쓰는 `office:company:<companyId>` 채널은 Supabase Realtime의 기본 동작상 RLS로 보호되지 않습니다 — 이 프로젝트에 가입한 어떤 사용자든 다른 회사의 UUID를 안다면 그 채널을 구독해 실시간 위치·채팅을 엿볼 수 있습니다. `companyId`가 추측하기 어려운 UUID라 실질적 위험은 낮지만, 완전히 막으려면 Supabase의 "Realtime Authorization"(private 채널 + `realtime.messages`에 대한 RLS 정책)을 설정해야 합니다 — 라이브 배포 환경에서 반복 검증이 필요한 작업이라 이번엔 진단만 하고 넘어갑니다.
-- **Vercel 빌드가 매번 Flutter SDK를 새로 클론**: `scripts/vercel_build.sh`가 캐시 없이 매 배포마다 Flutter stable을 얕은 클론합니다 — 빌드 시간과 GitHub 가용성에 의존적입니다. Vercel 프로젝트 설정에서 빌드 캐시(예: `flutter/` 디렉터리)를 구성하면 개선할 수 있지만, Vercel 대시보드 설정이 필요해 코드만으로는 확인할 수 없습니다.
-- **웹 렌더러 설정 미검토**: `flutter build web --release`가 기본 렌더러 설정 그대로입니다 — Flame 기반 그래픽이 많은 이 앱은 CanvasKit이 더 유리할 수 있는데, 실제 배포 환경에서 비교 없이 바꾸는 건 위험 부담이 있어 권장만 남겨둡니다.
+- **Vercel 빌드가 매번 Flutter SDK를 새로 클론**: `scripts/vercel_build.sh`가 캐시 없이 매 배포마다 Flutter stable을 얕은 클론합니다 — 빌드 시간과 GitHub 가용성에 의존적입니다. Vercel 프로젝트 설정에서 빌드 캐시(예: `flutter/` 디렉터리)를 구성하면 개선할 수 있지만, Vercel 대시보드 설정이 필요해 코드만으로는 확인할 수 없어 이번 범위에서는 의도적으로 제외합니다.
 
 ## 이연된 범위
 

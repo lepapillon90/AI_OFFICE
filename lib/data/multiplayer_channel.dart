@@ -30,9 +30,14 @@ class MultiplayerChannel {
     required void Function(Map<String, RemotePlayerState>) onChanged,
     void Function(ChatMessage)? onChatMessage,
   }) async {
+    // `private: true` requires Realtime Authorization on the server side —
+    // an RLS policy on `realtime.messages` gating this topic to the caller's
+    // own company (see docs/PHASE7_OPS_REVIEW.md) — without it, Supabase
+    // rejects the subscribe outright. Do not flip this back to a public
+    // channel: that was the exact hole the RLS policy exists to close.
     final channel = _client.channel(
       'office:company:$_companyId',
-      opts: RealtimeChannelConfig(key: userId),
+      opts: RealtimeChannelConfig(key: userId, private: true),
     );
     _channel = channel;
 
