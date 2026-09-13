@@ -13,7 +13,7 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
 
   OfficePlayer.forTest({required Vector2 position}) : this(position: position);
 
-  static final _hitboxSize = Vector2.all(40);
+  static final _hitboxSize = OfficeLayout.characterSize;
   static const _speed = 180.0;
 
   Vector2 _direction = Vector2.zero();

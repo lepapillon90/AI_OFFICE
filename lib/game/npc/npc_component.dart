@@ -1,3 +1,4 @@
+import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +10,7 @@ class NpcComponent extends PositionComponent {
     required Vector2 position,
   }) : super(
           position: position,
-          size: Vector2.all(64),
+          size: OfficeLayout.characterSize.clone(),
           anchor: Anchor.center,
         );
 

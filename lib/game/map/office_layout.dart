@@ -6,6 +6,10 @@ import 'package:flame/components.dart';
 abstract final class OfficeLayout {
   static final Vector2 worldSize = Vector2(1280, 896);
 
+  /// Rendered size for character sprites (player and NPCs), smaller than the
+  /// 64px source frame so characters read as human-scaled against the desks.
+  static final Vector2 characterSize = Vector2.all(40);
+
   static const List<Rect> blockers = [
     // Perimeter walls.
     Rect.fromLTWH(0, 0, 1280, 32),
