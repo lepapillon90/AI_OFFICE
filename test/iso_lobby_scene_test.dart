@@ -1,3 +1,4 @@
+import 'package:ai_office/game/isometric/iso_floor_tiles_component.dart';
 import 'package:ai_office/game/isometric/iso_lobby_layout.dart';
 import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
 import 'package:ai_office/game/isometric/iso_projection.dart';
@@ -6,31 +7,42 @@ import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/player/office_player.dart';
 import 'package:flame/components.dart';
+import 'package:flame/game.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+List<IsoLobbyPlacement> get _floorPlacements => IsoLobbyLayout.placements
+    .where((p) => p.assetPath.startsWith('office_1f/v3/floor/'))
+    .toList();
+
+List<IsoLobbyPlacement> get _overlayPlacements => IsoLobbyLayout.placements
+    .where((p) => !p.assetPath.startsWith('office_1f/v3/floor/'))
+    .toList();
+
 void main() {
-  test('creates a sprite component for every lobby placement', () {
+  test(
+      'creates one floor-tile batch component plus one sprite component '
+      'per overlay placement', () {
     final components = IsoLobbyScene().createComponents();
 
-    expect(components, hasLength(IsoLobbyLayout.placements.length));
+    expect(components, hasLength(1 + _overlayPlacements.length));
+    expect(components.first, isA<IsoFloorTilesComponent>());
+    expect(components.skip(1), everyElement(isA<IsoLobbySpriteComponent>()));
   });
 
-  test('maps every lobby placement to its configured sprite component', () {
-    final components = IsoLobbyScene().createComponents();
+  test('maps every overlay placement to its configured sprite component', () {
+    final overlayPlacements = _overlayPlacements;
+    final overlayComponents = IsoLobbyScene()
+        .createComponents()
+        .whereType<IsoLobbySpriteComponent>()
+        .toList();
 
-    expect(
-      components.first.placement.assetPath,
-      IsoLobbyLayout.placements.first.assetPath,
-    );
-    expect(
-      components.last.placement.assetPath,
-      IsoLobbyLayout.placements.last.assetPath,
-    );
+    expect(overlayComponents, hasLength(overlayPlacements.length));
+    for (var index = 0; index < overlayComponents.length; index++) {
+      final component = overlayComponents[index];
+      final placement = overlayPlacements[index];
 
-    for (var index = 0; index < components.length; index++) {
-      final component = components[index];
-      final placement = IsoLobbyLayout.placements[index];
-
+      expect(component.placement.assetPath, placement.assetPath);
       expect(component.position, placement.worldFootPoint);
       expect(component.size, placement.screenSize);
       expect(component.anchor, Anchor.bottomCenter);
@@ -42,6 +54,39 @@ void main() {
         ),
       );
     }
+  });
+
+  testWidgets(
+      'the floor-tile batch loads one Sprite per unique asset and covers '
+      'every placement — batched so entering the lobby stays fast even at '
+      '${_floorPlacements.length} tiles', (tester) async {
+    final floorPlacements = _floorPlacements;
+    final batch = IsoFloorTilesComponent(floorPlacements);
+    final game = FlameGame()..add(batch);
+
+    await tester.pumpWidget(
+      Directionality(textDirection: TextDirection.ltr, child: GameWidget(game: game)),
+    );
+    await tester.runAsync(() async {
+      await game.loaded;
+      await game.ready();
+    });
+    await tester.pump();
+
+    // Far fewer unique images than tiles — that gap is the whole point of
+    // batching (one Sprite.load per distinct category/variant, reused for
+    // every tile that shares it, instead of one per tile).
+    final uniqueAssets = floorPlacements.map((p) => p.assetPath).toSet();
+    expect(batch.loadedAssetCount, uniqueAssets.length);
+    expect(batch.loadedAssetCount, lessThan(floorPlacements.length));
+    expect(batch.renderedTileCount, floorPlacements.length);
+    expect(
+      batch.priority,
+      IsoProjection.priorityFor(
+        Vector2.zero(),
+        layerOffset: floorPlacements.first.layerOffset,
+      ),
+    );
   });
 
   test('player and NPC accept dynamic render priorities', () {

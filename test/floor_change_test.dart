@@ -63,7 +63,7 @@ void main() {
     await tester.pump();
 
     expect(game.currentFloor, Floor.lobby);
-    expect(game.player.position, Vector2(480, 144));
+    expect(game.player.position, FloorLayouts.lobby.arrivalPosition);
     expect(game.elevator.position, FloorLayouts.lobby.elevatorPosition);
     expect(game.isElevatorNearby, isTrue);
     expect(game.isComputerNearby, isFalse);

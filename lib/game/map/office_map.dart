@@ -55,19 +55,26 @@ class OfficeMap extends PositionComponent {
     ]);
   }
 
+  // Every workspace-floor tile shares one asset ('tiles/floor/floor_00.png')
+  // across a 24x16 grid (384 tiles) — mounting that many separate
+  // SpriteComponents (each with its own Sprite.load) was measurably slow to
+  // load/mount, so they're drawn from a single loaded Sprite instead. See
+  // IsoFloorTilesComponent's doc comment for the isometric lobby's version
+  // of the same fix and why it mattered (docs/STATUS.md).
   Future<void> _addFloorTiles() async {
     final maxY = OfficeLayout.worldSize.y - 32;
     final maxX = OfficeLayout.worldSize.x - 32;
+    final positions = <Vector2>[];
     for (var y = 32.0; y < maxY; y += _tileSize) {
       for (var x = 32.0; x < maxX; x += _tileSize) {
-        await add(
-          await _sprite(
-            'tiles/floor/floor_00.png',
-            Rect.fromLTWH(x, y, _tileSize, _tileSize),
-          ),
-        );
+        positions.add(Vector2(x, y));
       }
     }
+    await add(_TileBatchComponent(
+      sprite: await Sprite.load('tiles/floor/floor_00.png'),
+      positions: positions,
+      tileSize: Vector2.all(_tileSize),
+    ));
   }
 
   Future<SpriteComponent> _sprite(String assetPath, Rect bounds) async {
@@ -76,5 +83,27 @@ class OfficeMap extends PositionComponent {
       position: Vector2(bounds.left, bounds.top),
       size: Vector2(bounds.width, bounds.height),
     );
+  }
+}
+
+/// Draws one already-loaded [Sprite] at many top-left [positions] directly
+/// on the canvas, instead of one [SpriteComponent] (and Sprite.load) per
+/// position — see [OfficeMap._addFloorTiles]'s comment for why.
+class _TileBatchComponent extends PositionComponent {
+  _TileBatchComponent({
+    required this.sprite,
+    required this.positions,
+    required this.tileSize,
+  });
+
+  final Sprite sprite;
+  final List<Vector2> positions;
+  final Vector2 tileSize;
+
+  @override
+  void render(Canvas canvas) {
+    for (final position in positions) {
+      sprite.render(canvas, position: position, size: tileSize);
+    }
   }
 }
