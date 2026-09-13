@@ -265,16 +265,21 @@ class OfficeGame extends FlameGame
   /// broadcasts it to other signed-in users, and reports it via
   /// [onChatMessageSent] for the host app to persist.
   ///
-  /// A leading `@name` addresses the message: `@employee 오늘 할 일 정리해줘`
-  /// sends a command to that AI employee (its reply is posted as a follow-up
-  /// message once [askEmployee] resolves), while `@username ...` whispers —
-  /// only the sender and that user see it in [ChatPanel].
+  /// A leading `@name` addresses the message: both forms are private —
+  /// only [ChatPanel]'s 귓속말 tab, not the public 공간 채팅 tab — while a
+  /// plain message with no (or no matching) mention is public.
+  ///
+  /// `@employee 오늘 할 일 정리해줘` sends a command to that AI employee (its
+  /// reply is posted as a follow-up message once [askEmployee] resolves);
+  /// `@username ...` whispers to that other signed-in user instead.
   void sendChatMessage(String body) {
     final trimmed = body.trim();
     if (trimmed.isEmpty) {
       return;
     }
 
+    final multiplayer = this.multiplayer;
+    final selfId = multiplayer?.userId ?? 'local';
     final mention = _parseMention(trimmed);
     String? toUserId;
     String? toName;
@@ -286,13 +291,18 @@ class OfficeGame extends FlameGame
         toName = remote.name;
       } else {
         employee = _employeeByName(mention.name);
+        if (employee != null) {
+          // A command to an NPC is private to me too — only I see the
+          // exchange, in ChatPanel's 귓속말 tab, same as a user whisper.
+          toUserId = selfId;
+          toName = employee.name;
+        }
       }
     }
 
-    final multiplayer = this.multiplayer;
     final message = ChatMessage(
-      id: '${DateTime.now().microsecondsSinceEpoch}-${multiplayer?.userId ?? 'local'}',
-      userId: multiplayer?.userId ?? 'local',
+      id: '${DateTime.now().microsecondsSinceEpoch}-$selfId',
+      userId: selfId,
       senderName: player.profile.name,
       body: trimmed,
       createdAt: DateTime.now(),
@@ -360,12 +370,16 @@ class OfficeGame extends FlameGame
           ).catchError((Object e) => '응답을 가져오지 못했습니다: $e');
 
     final multiplayer = this.multiplayer;
+    final selfId = multiplayer?.userId ?? 'local';
     final reply = ChatMessage(
       id: '${DateTime.now().microsecondsSinceEpoch}-npc-${employee.id}',
-      userId: multiplayer?.userId ?? 'local',
+      userId: selfId,
       senderName: employee.name,
       body: replyBody,
       createdAt: DateTime.now(),
+      // Private to me, like the command that triggered it — see
+      // sendChatMessage's mention handling.
+      toUserId: selfId,
       isNpc: true,
     );
     _chatMessages = [..._chatMessages, reply];
