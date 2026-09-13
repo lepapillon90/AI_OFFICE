@@ -59,13 +59,5 @@ final List<AiEmployee> sampleEmployees = [
     workstationId: 'project-desk-2',
     status: NpcStatus.idle,
   ),
-  // 4층 대표실.
-  AiEmployee(
-    id: 'ai-7',
-    name: '강민',
-    role: '대표이사',
-    provider: 'openai',
-    workstationId: 'executive-desk',
-    status: NpcStatus.idle,
-  ),
+  // 4층 대표실엔 일부러 AI 직원을 두지 않음 — 대표는 실제 사용자 본인.
 ];

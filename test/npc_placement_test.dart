@@ -7,8 +7,8 @@ void main() {
   test('3층/4층 NPC 배치가 각 층의 가구와 일치한다', () {
     expect(NpcPlacement.forFloor(Floor.projectRoom).map((p) => p.id),
         ['project-desk-1', 'project-desk-2']);
-    expect(NpcPlacement.forFloor(Floor.executive).map((p) => p.id),
-        ['executive-desk']);
+    // 4층 대표실엔 AI 직원을 두지 않음 — 대표는 실제 사용자 본인.
+    expect(NpcPlacement.forFloor(Floor.executive), isEmpty);
     // 2층 desk grid isn't NpcPlacement's concern.
     expect(NpcPlacement.forFloor(Floor.workspace), isEmpty);
     expect(NpcPlacement.forFloor(Floor.lobby), isEmpty);

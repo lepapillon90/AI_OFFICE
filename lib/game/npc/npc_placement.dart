@@ -21,6 +21,7 @@ class NpcPlacement {
   /// here since each floor's furniture is laid out by hand).
   final Vector2 position;
 
+  // 4층 대표실엔 AI 직원을 두지 않음 — 대표는 실제 로그인한 사용자 본인.
   static final List<NpcPlacement> all = [
     // 3층 프로젝트룸: the shared two-desk table from ProjectRoomMap.
     NpcPlacement(
@@ -31,11 +32,6 @@ class NpcPlacement {
         id: 'project-desk-2',
         floor: Floor.projectRoom,
         position: Vector2(384, 320)),
-    // 4층 대표실: the CEO desk from ExecutiveMap.
-    NpcPlacement(
-        id: 'executive-desk',
-        floor: Floor.executive,
-        position: Vector2(448, 384)),
   ];
 
   static List<NpcPlacement> forFloor(Floor floor) =>
