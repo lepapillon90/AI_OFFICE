@@ -98,15 +98,22 @@ Deno.serve(async (req) => {
     // which company they belong to, or whether "employeeName" is even on
     // that company's roster) could otherwise spend the shared
     // OPENAI_API_KEY's budget by calling this function directly.
-    const { data: membership, error: membershipError } = await callerClient
+    //
+    // Not .maybeSingle(): the owner's own RLS policy
+    // ("owner_manage_members") lets them see *every* row in their company,
+    // not just their own, so this can legitimately return more than one
+    // row once a company has more than one member — .maybeSingle() throws
+    // ("multiple rows returned") in that case instead of just confirming
+    // membership.
+    const { data: membershipRows, error: membershipError } = await callerClient
       .from("company_members")
       .select("user_id")
       .eq("company_id", companyId)
-      .maybeSingle();
+      .limit(1);
     if (membershipError) {
       return jsonResponse({ error: membershipError.message }, 500);
     }
-    if (!membership) {
+    if (!membershipRows || membershipRows.length === 0) {
       return jsonResponse({ error: "not a member of this company" }, 403);
     }
 

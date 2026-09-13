@@ -33,6 +33,10 @@ Phase 7의 마지막 항목. 새 기능을 추가하기보다, 지금까지 쌓�
 
 지난 커밋에서 발견해 `docs/PHASE7_ADMIN.md`에 이미 반영했습니다: `activity_events.type` 체크 제약이 `'board'`/`'meeting'` 값을 허용하지 않아서, 그 SQL을 먼저 실행한 사용자는 업무 보드·회의 활동 기록 저장이 조용히 실패하고 있었을 것입니다.
 
+## 재배포 후 라이브 테스트로 발견해 고친 버그
+
+실제로 재배포하고 관리자 계정으로 호출해보니, 정상적인 요청까지 `500 Internal Server Error`(`"JSON object requested, multiple (or no) rows returned"`)로 실패했습니다. 원인: 소속 확인 쿼리가 `.maybeSingle()`을 썼는데, **대표(owner)는 `owner_manage_members` 정책 덕분에 자기 회사의 모든 구성원 행을 볼 수 있어서** 구성원이 2명 이상인 회사의 대표가 호출하면 여러 행이 반환되어 `.maybeSingle()`이 에러를 던졌습니다(인사관리자/일반 직원은 자기 자신의 행만 보이는 `self_select_membership` 정책만 적용돼서 이 문제가 없었음 — 그래서 소속 확인 자체가 통과되는 owner 계정으로 테스트할 때만 걸림). `.limit(1)` + 길이 확인으로 바꿔서 고쳤습니다 — **이 수정본으로 다시 한번 재배포가 필요합니다.**
+
 ## 필요한 설정
 
 **Edge Function 재배포 필수** — `supabase/functions/ask-employee/index.ts`가 바뀌었으므로 Supabase 대시보드에서 다시 배포해주세요(`docs/PHASE6_AI_EMPLOYEES.md`의 배포 방법과 동일). 재배포 전까지는 클라이언트가 `companyId`를 보내지만 예전 함수가 그 필드를 그냥 무시할 뿐이라 앱은 정상 동작합니다 — 다만 이번에 고친 소속 확인/사용량 상한은 재배포 전까지는 적용되지 않습니다.
