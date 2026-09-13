@@ -50,14 +50,19 @@ class NpcComponent extends PositionComponent {
     await addAll([_sprite, _nameTag]);
   }
 
-  /// Applies edited employee data (name, role, status) to this NPC.
+  /// Applies edited employee data (name, role, status) to this NPC. Safe to
+  /// call before [onLoad] has finished (e.g. a status flip that lands in
+  /// the same frame the NPC is first mounted) — [_employee] still updates,
+  /// but the sprite/name tag pick it up once loaded via the field itself.
   void updateEmployee(AiEmployee updated) {
     _employee = updated;
-    _nameTag.applyChanges(
-      badgeLabel: updated.displayStatus,
-      badgeColor: updated.status.displayColor,
-      name: updated.name,
-      role: updated.role,
-    );
+    if (isLoaded) {
+      _nameTag.applyChanges(
+        badgeLabel: updated.displayStatus,
+        badgeColor: updated.status.displayColor,
+        name: updated.name,
+        role: updated.role,
+      );
+    }
   }
 }

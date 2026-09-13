@@ -17,6 +17,7 @@ import 'package:ai_office/game/map/office_map.dart';
 import 'package:ai_office/game/multiplayer/remote_player_component.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
+import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
@@ -388,13 +389,28 @@ class OfficeGame extends FlameGame
     required String command,
   }) async {
     final askEmployee = this.askEmployee;
-    final replyBody = askEmployee == null
-        ? 'AI 연동이 아직 설정되지 않았습니다. docs/PHASE6_AI_EMPLOYEES.md를 참고해주세요.'
-        : await askEmployee(
-            employeeName: employee.name,
-            employeeRole: employee.role,
-            command: command,
-          ).catchError((Object e) => '응답을 가져오지 못했습니다: $e');
+    String replyBody;
+    if (askEmployee == null) {
+      replyBody = 'AI 연동이 아직 설정되지 않았습니다. docs/PHASE6_AI_EMPLOYEES.md를 참고해주세요.';
+    } else {
+      // Flip to "작업 중" for the round trip so the NPC visibly looks busy,
+      // then back to whatever it was before (or "오류" on failure) —
+      // ephemeral, not persisted via onEmployeeChanged, since this fires on
+      // every chat command and isn't a roster edit an admin made.
+      final previousStatus = employee.status;
+      _setEmployeeStatus(employee, NpcStatus.working);
+      try {
+        replyBody = await askEmployee(
+          employeeName: employee.name,
+          employeeRole: employee.role,
+          command: command,
+        );
+        _setEmployeeStatus(employee, previousStatus);
+      } catch (e) {
+        replyBody = '응답을 가져오지 못했습니다: $e';
+        _setEmployeeStatus(employee, NpcStatus.error);
+      }
+    }
 
     final multiplayer = this.multiplayer;
     final selfId = multiplayer?.userId ?? 'local';
@@ -425,6 +441,21 @@ class OfficeGame extends FlameGame
     _employees[index] = updated;
     _npcsByWorkstation[updated.workstationId]?.updateEmployee(updated);
     onEmployeeChanged?.call(updated);
+    notifyListeners();
+  }
+
+  /// Updates just [employee]'s status badge — in memory and on its NPC
+  /// sprite — without calling [onEmployeeChanged]. Used to flash "작업 중"
+  /// while an `@employee` chat command is in flight; a real roster edit
+  /// should go through [updateEmployee] instead so it gets persisted.
+  void _setEmployeeStatus(AiEmployee employee, NpcStatus status) {
+    final index = _employees.indexWhere((e) => e.id == employee.id);
+    if (index == -1) {
+      return;
+    }
+    final updated = _employees[index].copyWith(status: status);
+    _employees[index] = updated;
+    _npcsByWorkstation[updated.workstationId]?.updateEmployee(updated);
     notifyListeners();
   }
 
