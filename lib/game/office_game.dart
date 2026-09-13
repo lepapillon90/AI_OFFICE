@@ -4,6 +4,7 @@ import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/data/remote_player_state.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
+import 'package:ai_office/game/board/board_task.dart';
 import 'package:ai_office/game/exterior_backdrop.dart';
 import 'package:ai_office/game/floors/executive_map.dart';
 import 'package:ai_office/game/floors/floor.dart';
@@ -82,6 +83,9 @@ class OfficeGame extends FlameGame
     DocumentUrlResolver? resolveDocumentUrl,
     List<ActivityEvent>? initialActivity,
     void Function(ActivityEvent event)? onActivityLogged,
+    List<BoardTask>? initialBoardTasks,
+    void Function(BoardTask task)? onBoardTaskChanged,
+    void Function(String taskId)? onBoardTaskDeleted,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
@@ -98,6 +102,9 @@ class OfficeGame extends FlameGame
           resolveDocumentUrl: resolveDocumentUrl,
           initialActivity: initialActivity,
           onActivityLogged: onActivityLogged,
+          initialBoardTasks: initialBoardTasks,
+          onBoardTaskChanged: onBoardTaskChanged,
+          onBoardTaskDeleted: onBoardTaskDeleted,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -119,6 +126,9 @@ class OfficeGame extends FlameGame
     this.resolveDocumentUrl,
     List<ActivityEvent>? initialActivity,
     this.onActivityLogged,
+    List<BoardTask>? initialBoardTasks,
+    this.onBoardTaskChanged,
+    this.onBoardTaskDeleted,
   }) {
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
@@ -129,6 +139,7 @@ class OfficeGame extends FlameGame
       _usageByEmployee.addAll(initialUsage);
     }
     _activityLog.addAll(initialActivity ?? const []);
+    _boardTasks.addAll(initialBoardTasks ?? const []);
     computers = _buildComputers()
       ..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
@@ -217,6 +228,19 @@ class OfficeGame extends FlameGame
   final List<ActivityEvent> _activityLog = [];
   static const _activityHistoryLimit = 50;
   int _unreadActivityCount = 0;
+
+  /// Called whenever a board task is created or edited (including status
+  /// moves and assignment changes), so the host app can upsert it (e.g. to
+  /// Supabase's `board_tasks` table). Null outside a signed-in session.
+  final void Function(BoardTask task)? onBoardTaskChanged;
+
+  /// Called when a board task is deleted, so the host app can delete its
+  /// row too. Null outside a signed-in session.
+  final void Function(String taskId)? onBoardTaskDeleted;
+
+  /// The project/task board, in no particular guaranteed order — backs the
+  /// office screen's board panel, which groups these by [BoardTask.status].
+  final List<BoardTask> _boardTasks = [];
 
   /// Structured command/response records per employee id, most recent
   /// last — backs [tasksFor] (the computer popup's "작업 이력" list) and is
@@ -473,6 +497,119 @@ class OfficeGame extends FlameGame
   /// commands don't blow out a one-line activity summary.
   String _truncate(String text, [int maxLength = 40]) =>
       text.length <= maxLength ? text : '${text.substring(0, maxLength)}...';
+
+  /// The project/task board — backs the office screen's board panel.
+  List<BoardTask> get boardTasks => List.unmodifiable(_boardTasks);
+
+  AiEmployee? _employeeById(String id) {
+    for (final employee in _employees) {
+      if (employee.id == id) {
+        return employee;
+      }
+    }
+    return null;
+  }
+
+  /// Adds a new card to the board (starts in the "할 일" column).
+  BoardTask createBoardTask({
+    required String title,
+    String? description,
+    AiEmployee? assignee,
+  }) {
+    final now = DateTime.now();
+    final task = BoardTask(
+      id: '${now.microsecondsSinceEpoch}-board',
+      title: title,
+      description: description,
+      status: BoardTaskStatus.todo,
+      assigneeId: assignee?.id,
+      assigneeName: assignee?.name,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _boardTasks.add(task);
+    onBoardTaskChanged?.call(task);
+    _logActivity(
+      ActivityType.board,
+      assignee != null
+          ? '"${task.title}" 업무가 보드에 추가되었습니다 (담당: ${assignee.name})'
+          : '"${task.title}" 업무가 보드에 추가되었습니다',
+    );
+    notifyListeners();
+    return task;
+  }
+
+  /// Moves [taskId] to the next ([forward]) or previous column. A no-op at
+  /// either end of the board.
+  void moveBoardTask(String taskId, {required bool forward}) {
+    final index = _boardTasks.indexWhere((t) => t.id == taskId);
+    if (index == -1) {
+      return;
+    }
+    final current = _boardTasks[index];
+    final newStatus = forward ? current.status.next : current.status.previous;
+    if (newStatus == current.status) {
+      return;
+    }
+    final updated = current.copyWith(status: newStatus, updatedAt: DateTime.now());
+    _boardTasks[index] = updated;
+    onBoardTaskChanged?.call(updated);
+    _logActivity(
+      ActivityType.board,
+      '"${updated.title}" 업무가 "${newStatus.displayLabel}"(으)로 이동했습니다',
+    );
+    notifyListeners();
+  }
+
+  /// Reassigns [taskId] to [assignee] (null clears the assignment).
+  void assignBoardTask(String taskId, AiEmployee? assignee) {
+    final index = _boardTasks.indexWhere((t) => t.id == taskId);
+    if (index == -1) {
+      return;
+    }
+    final updated = _boardTasks[index].copyWith(
+      assigneeId: assignee?.id,
+      assigneeName: assignee?.name,
+      updatedAt: DateTime.now(),
+    );
+    _boardTasks[index] = updated;
+    onBoardTaskChanged?.call(updated);
+    _logActivity(
+      ActivityType.board,
+      assignee != null
+          ? '"${updated.title}" 업무가 ${assignee.name}에게 배정되었습니다'
+          : '"${updated.title}" 업무의 담당자가 해제되었습니다',
+    );
+    notifyListeners();
+  }
+
+  /// Removes [taskId] from the board.
+  void deleteBoardTask(String taskId) {
+    final index = _boardTasks.indexWhere((t) => t.id == taskId);
+    if (index == -1) {
+      return;
+    }
+    final removed = _boardTasks.removeAt(index);
+    onBoardTaskDeleted?.call(removed.id);
+    _logActivity(ActivityType.board, '"${removed.title}" 업무가 삭제되었습니다');
+    notifyListeners();
+  }
+
+  /// Sends [task]'s title as an `@employee` chat command to its assigned AI
+  /// employee — bridges the board with the existing chat/@mention AI
+  /// pipeline. A no-op if unassigned or the assignee has left the roster.
+  void dispatchBoardTaskToAssignee(BoardTask task) {
+    final assigneeId = task.assigneeId;
+    if (assigneeId == null) {
+      return;
+    }
+    final employee = _employeeById(assigneeId);
+    if (employee == null) {
+      return;
+    }
+    openChatWithEmployee(employee);
+    sendChatMessage('@${employee.name} ${task.title}');
+  }
 
   /// Resolves [task]'s [NpcTask.documentPath] to an openable URL via
   /// [resolveDocumentUrl], or null if it has no document or no resolver is

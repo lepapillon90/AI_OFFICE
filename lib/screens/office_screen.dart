@@ -2,6 +2,7 @@ import 'package:ai_office/data/company_repository.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/activity_panel.dart';
+import 'package:ai_office/screens/board_panel.dart';
 import 'package:ai_office/screens/chat_panel.dart';
 import 'package:ai_office/screens/computer_popup.dart';
 import 'package:ai_office/screens/elevator_popup.dart';
@@ -54,16 +55,18 @@ class _OfficeScreenState extends State<OfficeScreen> {
   // nowhere to go. So: whenever nothing overlays the game, claim focus.
   final _gameFocusNode = FocusNode(debugLabel: 'OfficeGame');
 
-  // Purely a UI overlay (no game-logic interaction needed), unlike the
+  // Purely UI overlays (no game-logic interaction needed), unlike the
   // computer/elevator/profile/chat popups which OfficeGame itself tracks.
   bool _isActivityPanelOpen = false;
+  bool _isBoardPanelOpen = false;
 
   bool get _anyOverlayOpen =>
       _officeGame.isComputerPopupOpen ||
       _officeGame.isElevatorPopupOpen ||
       _officeGame.isProfileCardOpen ||
       _officeGame.isChatOpen ||
-      _isActivityPanelOpen;
+      _isActivityPanelOpen ||
+      _isBoardPanelOpen;
 
   void _reclaimGameFocusIfIdle() {
     if (_anyOverlayOpen || _gameFocusNode.hasFocus) {
@@ -146,6 +149,14 @@ class _OfficeScreenState extends State<OfficeScreen> {
                             ? officeGame.closeChat
                             : officeGame.openChat,
                         icon: const Icon(Icons.chat_bubble_outline),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: '업무 보드',
+                      child: IconButton.filled(
+                        onPressed: () => setState(() => _isBoardPanelOpen = true),
+                        icon: const Icon(Icons.view_kanban_outlined),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -241,6 +252,11 @@ class _OfficeScreenState extends State<OfficeScreen> {
                 ActivityPanel(
                   game: officeGame,
                   onClose: () => setState(() => _isActivityPanelOpen = false),
+                ),
+              if (_isBoardPanelOpen)
+                BoardPanel(
+                  game: officeGame,
+                  onClose: () => setState(() => _isBoardPanelOpen = false),
                 ),
             ],
           );

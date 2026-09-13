@@ -86,6 +86,7 @@ class _ActivityTile extends StatelessWidget {
         ActivityType.employee => Icons.badge_outlined,
         ActivityType.aiCommand => Icons.smart_toy_outlined,
         ActivityType.member => Icons.people_outline,
+        ActivityType.board => Icons.view_kanban_outlined,
       };
 
   String get _timeLabel {

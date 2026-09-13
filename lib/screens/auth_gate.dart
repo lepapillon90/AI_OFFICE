@@ -1,4 +1,5 @@
 import 'package:ai_office/data/activity_repository.dart';
+import 'package:ai_office/data/board_repository.dart';
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
@@ -8,6 +9,7 @@ import 'package:ai_office/data/npc_document_repository.dart';
 import 'package:ai_office/data/npc_task_repository.dart';
 import 'package:ai_office/data/npc_usage_repository.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
+import 'package:ai_office/game/board/board_task.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
 import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/office_game.dart';
@@ -77,6 +79,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   final _usageRepository = NpcUsageRepository(Supabase.instance.client);
   final _documentRepository = NpcDocumentRepository(Supabase.instance.client);
   final _activityRepository = ActivityRepository(Supabase.instance.client);
+  final _boardRepository = BoardRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -101,6 +104,10 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     final activityHistory = await _activityRepository
         .fetchRecentActivity(companyId)
         .catchError((_) => <ActivityEvent>[]);
+    // Same fallback for the board_tasks table — see docs/PHASE7_BOARD.md.
+    final boardTasks = await _boardRepository
+        .fetchTasks(companyId)
+        .catchError((_) => <BoardTask>[]);
 
     final multiplayer = MultiplayerChannel(
       client: Supabase.instance.client,
@@ -157,6 +164,11 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       initialActivity: activityHistory,
       onActivityLogged: (event) =>
           _activityRepository.logEvent(companyId, event).catchError((_) {}),
+      initialBoardTasks: boardTasks,
+      onBoardTaskChanged: (task) =>
+          _boardRepository.upsertTask(companyId, task).catchError((_) {}),
+      onBoardTaskDeleted: (taskId) =>
+          _boardRepository.deleteTask(taskId).catchError((_) {}),
     );
 
     return _LoadedSession(
