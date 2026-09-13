@@ -54,7 +54,11 @@ class _ChatPanelState extends State<ChatPanel> {
     String selfUserId,
   ) {
     if (message.isNpc) {
-      return (key: 'npc:${message.senderName}', name: message.senderName, isNpc: true);
+      return (
+        key: 'npc:${message.senderName}',
+        name: message.senderName,
+        isNpc: true
+      );
     }
     if (message.userId == selfUserId) {
       if (message.toUserId == selfUserId) {
@@ -65,7 +69,11 @@ class _ChatPanelState extends State<ChatPanel> {
       final name = message.toName ?? '?';
       return (key: 'user:${message.toUserId}', name: name, isNpc: false);
     }
-    return (key: 'user:${message.userId}', name: message.senderName, isNpc: false);
+    return (
+      key: 'user:${message.userId}',
+      name: message.senderName,
+      isNpc: false
+    );
   }
 
   void _send() {
@@ -322,56 +330,60 @@ class _RoomList extends StatelessWidget {
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: rooms.length,
-      separatorBuilder: (_, __) =>
-          const Divider(color: Colors.white12, height: 1),
-      itemBuilder: (context, index) {
-        final room = rooms[index];
-        final last = room.lastMessage!;
-        return ListTile(
-          onTap: () => onTap(room),
-          leading: CircleAvatar(
-            backgroundColor:
-                room.isNpc ? const Color(0xFF8BC34A) : const Color(0xFFCE93D8),
-            child: Text(
-              room.name.isNotEmpty ? room.name.substring(0, 1) : '?',
-              style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.bold,
+    return Material(
+      type: MaterialType.transparency,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: rooms.length,
+        separatorBuilder: (_, __) =>
+            const Divider(color: Colors.white12, height: 1),
+        itemBuilder: (context, index) {
+          final room = rooms[index];
+          final last = room.lastMessage!;
+          return ListTile(
+            onTap: () => onTap(room),
+            leading: CircleAvatar(
+              backgroundColor: room.isNpc
+                  ? const Color(0xFF8BC34A)
+                  : const Color(0xFFCE93D8),
+              child: Text(
+                room.name.isNotEmpty ? room.name.substring(0, 1) : '?',
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ),
-          title: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  room.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    room.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              if (room.isNpc) ...[
-                const SizedBox(width: 4),
-                const Text(
-                  '· AI',
-                  style: TextStyle(color: Color(0xFF8BC34A), fontSize: 12),
-                ),
+                if (room.isNpc) ...[
+                  const SizedBox(width: 4),
+                  const Text(
+                    '· AI',
+                    style: TextStyle(color: Color(0xFF8BC34A), fontSize: 12),
+                  ),
+                ],
               ],
-            ],
-          ),
-          subtitle: Text(
-            last.body,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white54),
-          ),
-        );
-      },
+            ),
+            subtitle: Text(
+              last.body,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white54),
+            ),
+          );
+        },
+      ),
     );
   }
 }
