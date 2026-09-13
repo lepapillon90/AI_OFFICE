@@ -32,6 +32,7 @@ class _PrivateRoom {
 
 class _ChatPanelState extends State<ChatPanel> {
   final _controller = TextEditingController();
+  final _inputFocusNode = FocusNode(debugLabel: 'ChatPanel input');
   final _publicScrollController = ScrollController();
   final _roomScrollController = ScrollController();
   int _tabIndex = 0;
@@ -48,11 +49,20 @@ class _ChatPanelState extends State<ChatPanel> {
       _selectedRoomKey = 'npc:$pendingPeer';
       _selectedRoomName = pendingPeer;
     }
+    // Explicit request (rather than TextField's own `autofocus`) so this
+    // reliably wins even if OfficeScreen's game-focus-reclaim callback is
+    // scheduled in the same frame this panel first mounts.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _inputFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _inputFocusNode.dispose();
     _publicScrollController.dispose();
     _roomScrollController.dispose();
     super.dispose();
@@ -121,6 +131,7 @@ class _ChatPanelState extends State<ChatPanel> {
       _selectedRoomKey = key;
       _selectedRoomName = name;
     });
+    _inputFocusNode.requestFocus();
   }
 
   void _backToRoomList() {
@@ -211,10 +222,7 @@ class _ChatPanelState extends State<ChatPanel> {
                     Expanded(
                       child: TextField(
                         controller: _controller,
-                        // Safe now that OfficeScreen reclaims game focus
-                        // whenever no overlay is open — this only steals
-                        // focus for as long as the panel is actually shown.
-                        autofocus: true,
+                        focusNode: _inputFocusNode,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           hintText: _selectedRoomName != null
