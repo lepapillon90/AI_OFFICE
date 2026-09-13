@@ -57,7 +57,7 @@
   - `ask-employee` Edge Function이 OpenAI 응답의 `usage`(토큰 수)를 함께 반환 → `NpcCommandService`가 파싱해 `askEmployee` 결과(`NpcCommandResult`)에 포함
   - `OfficeGame.usageFor(employee)`/`totalUsage`가 직원별·전체 호출/성공/실패 횟수와 누적 토큰을 집계 — 자동 재시도로 인한 추가 호출도 각각 집계
   - 컴퓨터 팝업에 직원별 "호출 N회 (성공 N · 실패 N) · N 토큰" 요약과, 작업 이력 각 항목에 토큰 수 표시
-  - 실제 비용(통화 환산)은 계산하지 않음 — OpenAI 대시보드에서 단가로 환산 필요
+  - ~~실제 비용(통화 환산)은 계산하지 않음~~ — 이후 `docs/PHASE7_OPS_REVIEW.md`의 후속 반영에서 gpt-4o-mini 단가 기준 USD 환산(`estimatedCostUsd`)을 추가해 팝업에 "약 $0.0012"처럼 표시
 - Phase 6 DB 영속화 + 가상 문서 생성 (`docs/PHASE6_AI_EMPLOYEES.md`) — `NpcTask`/사용량이 재로그인 후에도 유지되고, 성공한 답변이 다운로드 가능한 문서가 됨
   - `npc_tasks`/`npc_usage_events` 테이블 + `npc-documents` Storage 버킷 SQL을 문서에 추가 — **아직 사용자가 Supabase에서 실행하지 않았다면 이 부분만 미완료**(실행 전까지 작업 이력·사용량은 세션 메모리에만 있고 새로고침 시 사라짐, 앱 자체는 정상 동작)
   - `OfficeGame`이 `onTaskChanged`/`onUsageEvent`로 매 변경을 알리고 `AuthGate`가 `NpcTaskRepository`/`NpcUsageRepository`로 저장, 로그인 시 `initialTasks`/`initialUsage`로 복원
@@ -109,14 +109,23 @@
   - **진단만 하고 코드는 안 건드린 것**(라이브 재현·반복 검증 없이 바꾸기엔 위험): Realtime 채널(`office:company:<id>`)이 RLS로 보호되지 않아 companyId를 아는 다른 가입자가 구독 가능한 점, Vercel 빌드가 매번 Flutter SDK 재클론하는 점, 웹 렌더러 미검토
   - Edge Function 재배포 필요(`docs/PHASE7_OPS_REVIEW.md`) — 재배포 전까지는 새로 추가한 소속 확인/사용량 상한이 적용 안 됨, 다만 클라이언트가 `companyId`를 추가로 보내는 것 자체는 구버전 함수에서 무시되므로 앱은 정상 동작
   - 자동 테스트(`dart analyze` 전체 통과, `test/board_test.dart`/`test/chat_panel_test.dart`/`test/widget_test.dart`/`test/computer_popup_npc_chat_test.dart` 회귀 없음 확인) — Edge Function의 새 로직(소속 확인·상한)은 배포 후 라이브 호출로 직접 검증 필요(이 세션에서는 파일 변경만, 재배포 전이라 아직 검증 못함)
+  - **재배포 후 라이브 검증 완료** — 실제로 재배포하고 관리자 계정으로 호출해보니 정상 요청까지 500 에러가 나는 버그(`.maybeSingle()`이 구성원 2명 이상인 회사의 대표 호출 시 여러 행을 반환받아 실패)를 발견해 `.limit(1)`로 수정, 재배포 후 소속 확인(403)·사용량 상한(429)·정상 호출·멀티턴 맥락까지 4개 케이스 전부 실제 OpenAI 응답으로 재검증 완료
+- Phase 7 후속 반영 — 의도적으로 미뤘던 4가지 항목(`docs/PHASE7_OPS_REVIEW.md`, Vercel 빌드 캐시는 제외하고 전부 완료)
+  - **비용 환산**: `NpcUsage`/`NpcUsageSummary`에 gpt-4o-mini 단가 기준 `estimatedCostUsd` 추가, 컴퓨터 팝업의 직원별 누적/작업별 사용량 옆에 "약 $0.0012"처럼 USD 표시. 자동 테스트(`test/npc_usage_cost_test.dart`)로 검증
+  - **사용량 상한 알림 UI**: `ask-employee`의 429 응답을 `AskEmployeeRateLimitException`(`lib/game/npc/npc_command_errors.dart`)으로 구분 — 일반 오류와 달리 재시도하지 않고, 실제 호출이 없었으므로 사용량 집계에도 카운트 안 함, 채팅/작업 이력/활동 기록에 한도 메시지를 그대로 노출. 자동 테스트(`test/computer_popup_npc_chat_test.dart`)로 검증
+  - **감사 기록 사용자 ID**: `activity_events`에 `actor_user_id`(안정적인 Supabase auth id) 컬럼 추가 — 표시 이름(`actor_name`)과 달리 계정이 리네임돼도 안 바뀜. 지금은 값만 쌓아두고 UI엔 아직 안 보여줌. 자동 테스트(`test/activity_log_test.dart`)로 검증
+  - **Realtime 채널 접근 제어**: `MultiplayerChannel`이 여는 `office:company:<companyId>` 채널을 `RealtimeChannelConfig(private: true)`로 전환하고, `realtime.messages`에 `company_members` 소속을 확인하는 RLS 정책을 추가(Supabase Realtime Authorization) — companyId만 안다고 아무나 구독하던 구멍을 막음. **실제 Node 스크립트로 라이브 검증 완료**: (1) 대표가 자기 회사 채널 구독 → `SUBSCRIBED`, (2) 같은 사용자가 소속 아닌 임의 회사 채널 구독 시도 → `Unauthorized` 에러로 거절, (3) 같은 회사의 다른 구성원이 같은 채널 구독 → `SUBSCRIBED` — 3케이스 전부 의도대로 동작
+  - **웹 렌더러**: Flutter 3.47.4의 `flutter build web --help`를 직접 확인한 결과 예전 `--web-renderer` 플래그가 이미 없고 CanvasKit이 기본이자 유일한 렌더러임을 확인 — 코드/스크립트 변경 불필요, 로컬 `flutter build web --release`로 정상 빌드까지 확인
+  - **제외**: Vercel 빌드 캐시 — Vercel 대시보드 설정이 필요해 코드만으로는 확인 불가하다는 이유로 사용자가 명시적으로 이번 범위에서 제외
 
 ## 다음 작업
 
 1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL, `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL, 그리고 **새로 추가된** `npc_tasks`/`npc_usage_events` 테이블·`npc-documents` Storage 버킷 SQL, `docs/PHASE7_ACTIVITY.md`/`docs/PHASE7_BOARD.md`/`docs/PHASE7_ADMIN.md`의 SQL을 아직 안 하셨다면 Supabase SQL Editor/대시보드에서 실행 — 실행 전까지는 작업 이력·사용량·활동 기록·업무 보드가 세션 메모리에만 있다가 새로고침 시 사라지지만 앱 자체는 정상 동작
-1-1. **가장 시급**: `docs/PHASE7_OPS_REVIEW.md`에 따라 `ask-employee` Edge Function을 재배포해주세요 — 다른 회사인 척 호출해 OpenAI 비용을 소모시킬 수 있던 보안 구멍과 사용량 상한을 이번에 고쳤는데, 재배포 전까지는 적용되지 않습니다
+1-1. `ask-employee` Edge Function 재배포 완료 및 라이브 검증 완료 — 소속 확인(403)·사용량 상한(429) 정상 동작 확인 (이 항목은 완료됨)
+1-2. `realtime.messages` RLS 정책(Realtime Authorization) 적용 및 라이브 검증 완료 — 클라이언트가 다음 배포/새로고침 때 자동으로 `private: true`로 붙음
 2. 위 "Phase 5 마무리 점검"의 실제 브라우저 두 개 확인 (제가 자동화 환경에서는 재현 못 함)
 3. **권장**: 실제 브라우저로 2층 컴퓨터 앞에서 `[E]` → "대화하기"/"작업 이력"/"문서 열기" 버튼까지 한 번 직접 클릭해서 확인 (이 세션은 자동화 키보드 이동이 안 돼서 코드 검증만 완료)
-4. Phase 6 나머지(이연): 실제 비용(통화 환산) 계산, 사용량 상한/경고
+4. ~~Phase 6 나머지(이연): 실제 비용(통화 환산) 계산, 사용량 상한/경고~~ — 완료(위 "Phase 7 후속 반영" 참고)
 5. 3층 NPC 배치 완료 — 3층 프로젝트룸에 `도윤`(PM/기획자)·`하윤`(프로덕트 디자이너). `NpcPlacement` 레지스트리(`lib/game/npc/npc_placement.dart`)로 층 가구 배치에 맞춰 자리 배정, 채팅 `@이름` 명령도 동일하게 동작. **4층 대표실엔 일부러 AI 직원을 두지 않음** — 대표는 실제 로그인한 사용자 본인이므로 AI NPC가 그 역할을 대신하지 않음. **1층 로비는 동시에 진행 중인 isometric 로비 작업과 충돌을 피하려고 이번엔 건드리지 않음** — 그 작업이 정리되면 이어서 진행 필요. 자동 테스트(`test/npc_placement_test.dart`)로 배치·로스터 일치 확인, 이 세션의 브라우저 텍스트 입력 문제로 실제 채팅 명령 클릭 검증은 못함
 6. 타일 렌더링 최적화 완료 + `test/lobby_runtime_test.dart` 타임아웃의 실제 원인 정정
    - **최적화**: 1층 이소메트릭 로비(24×16=384타일)와 2층 업무공간(24×16=384타일) 모두, 타일 하나당 별도 `SpriteComponent`(+개별 `Sprite.load`)를 마운트하던 방식에서 → 같은 이미지를 쓰는 타일들을 묶어 **에셋당 한 번만 로드**하고 캔버스에 직접 그리는 방식으로 변경(`IsoFloorTilesComponent`, `OfficeMap`의 `_TileBatchComponent`). 1층은 384개 타일이 실제 이미지 수(수십 개) 기준으로만 로드되도록 줄었고, 자동 테스트(`test/iso_lobby_scene_test.dart`)로 "고유 에셋 수 < 타일 수" 및 위치·개수 정합성 검증 — 이 테스트가 이전엔 수 분~10분 타임아웃 나던 게 지금은 1초 이내로 통과
