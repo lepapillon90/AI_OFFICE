@@ -46,6 +46,25 @@ alter table companies enable row level security;
 alter table company_members enable row level security;
 alter table employees enable row level security;
 
+-- Policies are dropped first so this whole script is safe to run again
+-- (e.g. after adding company_members, or just to double-check state) —
+-- CREATE POLICY has no IF NOT EXISTS, so re-running it as-is would error
+-- with "policy already exists" instead of updating it.
+drop policy if exists "owner_select_company" on companies;
+drop policy if exists "owner_insert_company" on companies;
+drop policy if exists "owner_update_company" on companies;
+drop policy if exists "owner_delete_company" on companies;
+drop policy if exists "self_select_membership" on company_members;
+drop policy if exists "owner_manage_members" on company_members;
+drop policy if exists "owner_select_employees" on employees;
+drop policy if exists "owner_insert_employees" on employees;
+drop policy if exists "owner_update_employees" on employees;
+drop policy if exists "owner_delete_employees" on employees;
+drop policy if exists "managers_select_employees" on employees;
+drop policy if exists "managers_insert_employees" on employees;
+drop policy if exists "managers_update_employees" on employees;
+drop policy if exists "managers_delete_employees" on employees;
+
 create policy "owner_select_company" on companies
   for select using (auth.uid() = owner_id);
 create policy "owner_insert_company" on companies
@@ -103,16 +122,14 @@ create policy "managers_delete_employees" on employees
         and m.role in ('owner', 'hr_manager')
     )
   );
+
+-- Tell PostgREST to reload its schema cache immediately, instead of
+-- waiting for its normal refresh interval. Run this after any schema
+-- change if the app immediately reports "table ... not found".
+notify pgrst, 'reload schema';
 ```
 
-이미 이전 버전 스키마(테이블 생성 + `owner_*_employees` 정책)를 실행하셨다면, 위 SQL을 다시 실행하기 전에 옛 정책을 지워야 충돌하지 않습니다:
-
-```sql
-drop policy if exists "owner_select_employees" on employees;
-drop policy if exists "owner_insert_employees" on employees;
-drop policy if exists "owner_update_employees" on employees;
-drop policy if exists "owner_delete_employees" on employees;
-```
+이 SQL 전체는 몇 번을 다시 실행해도 안전합니다(정책을 먼저 지우고 다시 만듭니다). "policy already exists" 같은 에러가 나면 옛날 버전의 스크립트를 실행하신 것이니, 위 최신 SQL 전체를 그대로 다시 실행하시면 됩니다.
 
 ## 인증
 
