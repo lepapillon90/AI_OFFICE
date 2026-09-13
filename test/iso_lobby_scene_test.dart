@@ -1,5 +1,6 @@
 import 'package:ai_office/game/isometric/iso_lobby_layout.dart';
 import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
+import 'package:ai_office/game/isometric/iso_projection.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
@@ -14,19 +15,33 @@ void main() {
     expect(components, hasLength(IsoLobbyLayout.placements.length));
   });
 
-  test('maps lobby assets to depth-sorted sprite components', () {
+  test('maps every lobby placement to its configured sprite component', () {
     final components = IsoLobbyScene().createComponents();
-    final byAsset = {
-      for (final component in components) component.placement.assetPath: component,
-    };
 
-    final ground = byAsset['office_1f/isometric/lobby_ground.png']!;
-    final reception = byAsset['office_1f/isometric/reception.png']!;
-    final planters = byAsset['office_1f/isometric/planters.png']!;
-    final foreground = byAsset['office_1f/isometric/foreground.png']!;
+    expect(
+      components.first.placement.assetPath,
+      IsoLobbyLayout.placements.first.assetPath,
+    );
+    expect(
+      components.last.placement.assetPath,
+      IsoLobbyLayout.placements.last.assetPath,
+    );
 
-    expect(ground.priority, lessThan(reception.priority));
-    expect(foreground.priority, greaterThan(planters.priority));
+    for (var index = 0; index < components.length; index++) {
+      final component = components[index];
+      final placement = IsoLobbyLayout.placements[index];
+
+      expect(component.position, placement.worldFootPoint);
+      expect(component.size, placement.screenSize);
+      expect(component.anchor, Anchor.bottomCenter);
+      expect(
+        component.priority,
+        IsoProjection.priorityFor(
+          placement.worldFootPoint,
+          layerOffset: placement.layerOffset,
+        ),
+      );
+    }
   });
 
   test('player and NPC accept dynamic render priorities', () {
