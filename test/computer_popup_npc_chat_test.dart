@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
+import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/office_screen.dart';
 import 'package:flame/components.dart';
@@ -52,7 +53,7 @@ void main() {
   testWidgets(
       'an @employee command flips its status to working during the call, '
       'then restores its previous status on success', (tester) async {
-    final completer = Completer<String>();
+    final completer = Completer<NpcCommandResult>();
     final game = OfficeGame(
       askEmployee: ({
         required employeeName,
@@ -79,7 +80,7 @@ void main() {
     final duringCall = game.employees.firstWhere((e) => e.name == '노아');
     expect(duringCall.status, NpcStatus.working);
 
-    completer.complete('보고 끝났습니다');
+    completer.complete(const NpcCommandResult(reply: '보고 끝났습니다'));
     await tester.pump();
     await tester.pump();
 
@@ -100,7 +101,7 @@ void main() {
         required history,
       }) {
         callCount++;
-        return Future<String>.error('network boom');
+        return Future<NpcCommandResult>.error('network boom');
       },
     );
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
@@ -135,7 +136,14 @@ void main() {
         required command,
         required history,
       }) =>
-          Future.value('보고 끝났습니다'),
+          Future.value(const NpcCommandResult(
+            reply: '보고 끝났습니다',
+            usage: NpcUsage(
+              promptTokens: 120,
+              completionTokens: 40,
+              totalTokens: 160,
+            ),
+          )),
     );
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
     await tester.pump();
@@ -150,6 +158,71 @@ void main() {
     expect(tasks.first.status, NpcTaskStatus.success);
     expect(tasks.first.attempts, 1);
     expect(tasks.first.result, '보고 끝났습니다');
+    expect(tasks.first.usage?.totalTokens, 160);
+
+    final usage = game.usageFor(noah);
+    expect(usage.calls, 1);
+    expect(usage.successes, 1);
+    expect(usage.failures, 0);
+    expect(usage.promptTokens, 120);
+    expect(usage.completionTokens, 40);
+    expect(usage.totalTokens, 160);
+  });
+
+  testWidgets(
+      'usage accumulates across calls and counts every retry attempt',
+      (tester) async {
+    var callCount = 0;
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) {
+        callCount++;
+        if (callCount == 1) {
+          // The first @유나 command fails, forcing the automatic retry —
+          // both attempts should count toward her usage totals.
+          return Future<NpcCommandResult>.error('network boom');
+        }
+        return Future.value(NpcCommandResult(
+          reply: '답변 $callCount',
+          usage: const NpcUsage(
+            promptTokens: 10,
+            completionTokens: 5,
+            totalTokens: 15,
+          ),
+        ));
+      },
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    final yuna = game.employees.firstWhere((e) => e.name == '유나');
+    game.sendChatMessage('@유나 첫 명령');
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    // Attempt 1 failed, attempt 2 (still within the same command) succeeded.
+    var usage = game.usageFor(yuna);
+    expect(usage.calls, 2);
+    expect(usage.successes, 1);
+    expect(usage.failures, 1);
+    expect(usage.totalTokens, 15);
+
+    game.sendChatMessage('@유나 두번째 명령');
+    await tester.pump();
+    await tester.pump();
+
+    usage = game.usageFor(yuna);
+    expect(usage.calls, 3);
+    expect(usage.successes, 2);
+    expect(usage.failures, 1);
+    expect(usage.totalTokens, 30);
+    expect(game.totalUsage.calls, greaterThanOrEqualTo(usage.calls));
   });
 
   testWidgets(
@@ -164,7 +237,7 @@ void main() {
         required history,
       }) {
         capturedHistory = history;
-        return Future.value('답변');
+        return Future.value(const NpcCommandResult(reply: '답변'));
       },
     );
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));

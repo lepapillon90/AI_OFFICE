@@ -20,6 +20,7 @@ import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/npc_placement.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/npc_task.dart';
+import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
@@ -38,7 +39,7 @@ import 'package:flutter/widgets.dart';
 /// (oldest first, `role` is `'user'` or `'assistant'`), so a handler backed
 /// by an LLM can answer with multi-turn context instead of treating every
 /// command as a one-off.
-typedef NpcCommandHandler = Future<String> Function({
+typedef NpcCommandHandler = Future<NpcCommandResult> Function({
   required String employeeName,
   required String employeeRole,
   required String command,
@@ -143,6 +144,11 @@ class OfficeGame extends FlameGame
   /// capped at [_taskHistoryLimit] entries per employee.
   final Map<String, List<NpcTask>> _tasksByEmployee = {};
   static const _taskHistoryLimit = 20;
+
+  /// Cumulative call/token counters per employee id — backs [usageFor] and
+  /// [totalUsage]. Held only in memory; see docs/PHASE6_AI_EMPLOYEES.md for
+  /// why this isn't persisted to Supabase (yet).
+  final Map<String, NpcUsageSummary> _usageByEmployee = {};
 
   /// How many past exchanges with an employee are sent as [askEmployee]'s
   /// `history` so it can answer with multi-turn context.
@@ -326,6 +332,30 @@ class OfficeGame extends FlameGame
     return List.unmodifiable(tasks.reversed);
   }
 
+  /// Cumulative call/success/failure/token counters for [employee] — backs
+  /// the computer popup's usage line. Every `askEmployee` attempt counts,
+  /// including ones an automatic retry made.
+  NpcUsageSummary usageFor(AiEmployee employee) =>
+      _usageByEmployee[employee.id] ?? const NpcUsageSummary();
+
+  /// The same counters summed across every employee.
+  NpcUsageSummary get totalUsage => _usageByEmployee.values.fold(
+        const NpcUsageSummary(),
+        (total, summary) => total + summary,
+      );
+
+  void _recordUsage(String employeeId, {required bool success, NpcUsage? usage}) {
+    final current = _usageByEmployee[employeeId] ?? const NpcUsageSummary();
+    _usageByEmployee[employeeId] = NpcUsageSummary(
+      calls: current.calls + 1,
+      successes: current.successes + (success ? 1 : 0),
+      failures: current.failures + (success ? 0 : 1),
+      promptTokens: current.promptTokens + (usage?.promptTokens ?? 0),
+      completionTokens:
+          current.completionTokens + (usage?.completionTokens ?? 0),
+    );
+  }
+
   /// The last [_historyTurnLimit] turns already exchanged with [employee],
   /// oldest first, formatted for [NpcCommandHandler]'s `history` parameter.
   List<Map<String, String>> _historyFor(AiEmployee employee) {
@@ -489,7 +519,7 @@ class OfficeGame extends FlameGame
       // OpenAI hiccup shouldn't immediately show the employee as errored.
       const maxAttempts = 2;
       Object? lastError;
-      String? result;
+      NpcCommandResult? result;
       var attemptsUsed = 0;
       for (var attempt = 1; attempt <= maxAttempts; attempt++) {
         attemptsUsed = attempt;
@@ -500,15 +530,17 @@ class OfficeGame extends FlameGame
             command: command,
             history: history,
           );
+          _recordUsage(employee.id, success: true, usage: result.usage);
           lastError = null;
           break;
         } catch (e) {
+          _recordUsage(employee.id, success: false);
           lastError = e;
         }
       }
 
       if (lastError == null) {
-        replyBody = result!;
+        replyBody = result!.reply;
         _setEmployeeStatus(employee, previousStatus);
         _updateTask(
           employee.id,
@@ -517,6 +549,7 @@ class OfficeGame extends FlameGame
             status: NpcTaskStatus.success,
             result: replyBody,
             attempts: attemptsUsed,
+            usage: result!.usage,
           ),
         );
       } else {

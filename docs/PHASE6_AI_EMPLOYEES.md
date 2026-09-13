@@ -60,8 +60,18 @@ supabase secrets set OPENAI_API_KEY=본인의_키
 - `askEmployee` 호출이 실패하면 한 번 자동으로 재시도하고, 그래도 실패하면 그때 비로소 직원 상태를 "오류"로 바꾸고 `NpcTask`에 시도 횟수(2)와 에러 메시지를 기록합니다. 첫 시도에서 성공하면 시도 횟수는 1로 기록됩니다.
 - 이 기록은 현재 세션 메모리에만 있고 Supabase에는 저장하지 않습니다 — 새로고침/재로그인하면 사라지며, 이미 저장되는 채팅 기록(`messages` 테이블, `is_npc`)과는 별개입니다.
 
+## 사용량 추적 (호출 횟수 / 토큰)
+
+- `ask-employee` Edge Function이 OpenAI 응답의 `usage`(`prompt_tokens`/`completion_tokens`/`total_tokens`) 필드를 그대로 함께 반환하고, `NpcCommandService.ask()`가 이를 `NpcUsage`로 파싱해 `askEmployee`의 반환값(`NpcCommandResult`)에 담습니다.
+- `OfficeGame`이 직원별로 `NpcUsageSummary`(호출/성공/실패 횟수, 누적 프롬프트·응답 토큰)를 누적하며, **자동 재시도로 발생한 추가 호출도 각각 하나의 실제 API 호출로 집계**합니다 — `OfficeGame.usageFor(employee)`로 직원별, `OfficeGame.totalUsage`로 전체 합계를 조회할 수 있습니다.
+- 컴퓨터 팝업이 직원 상태 아래에 "호출 N회 (성공 N · 실패 N) · N 토큰" 요약을, "작업 이력" 목록의 각 항목에는 그 호출의 토큰 수를 함께 보여줍니다.
+- 실제 비용(원화/달러 환산)까지는 계산하지 않습니다 — OpenAI 대시보드에서 모델별 단가로 직접 환산해야 합니다.
+- 이 집계도 `NpcTask`와 마찬가지로 세션 메모리에만 있고 Supabase에는 저장하지 않습니다.
+- 자동 테스트(`test/computer_popup_npc_chat_test.dart`)로 성공/실패/재시도 각각의 집계와 여러 명령에 걸친 누적을 검증했습니다.
+
 ## 이연된 범위
 
 - AI 직원의 실제 업무 수행(파일 생성, 외부 도구 호출 등)은 이번 범위 아님 — 텍스트 응답만 제공
-- `NpcTask` 기록의 Supabase 영속화(재로그인 후에도 "작업 이력" 유지)는 이번 범위 아님
+- `NpcTask`/사용량 집계의 Supabase 영속화(재로그인 후에도 유지)는 이번 범위 아님
+- 실제 비용(통화 환산) 계산과 사용량 상한/경고는 이번 범위 아님
 - 귓속말의 DB 레벨 프라이버시(RLS)는 이번 범위 아님 — 화면에서만 숨김

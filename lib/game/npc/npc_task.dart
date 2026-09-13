@@ -1,3 +1,5 @@
+import 'npc_usage.dart';
+
 /// The lifecycle of one `@employee command` dispatched to an AI employee.
 enum NpcTaskStatus { pending, success, error }
 
@@ -14,6 +16,7 @@ class NpcTask {
     this.result,
     this.errorMessage,
     this.attempts = 0,
+    this.usage,
   });
 
   final String id;
@@ -29,11 +32,16 @@ class NpcTask {
   /// kicked in after the first attempt failed.
   final int attempts;
 
+  /// Token usage reported for the attempt that produced [result], if the
+  /// provider reported it. Null while [status] is pending or error.
+  final NpcUsage? usage;
+
   NpcTask copyWith({
     NpcTaskStatus? status,
     String? result,
     String? errorMessage,
     int? attempts,
+    NpcUsage? usage,
   }) {
     return NpcTask(
       id: id,
@@ -44,6 +52,7 @@ class NpcTask {
       result: result ?? this.result,
       errorMessage: errorMessage ?? this.errorMessage,
       attempts: attempts ?? this.attempts,
+      usage: usage ?? this.usage,
     );
   }
 }

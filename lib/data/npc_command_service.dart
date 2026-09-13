@@ -1,3 +1,4 @@
+import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Asks an AI employee to respond to an `@employee command` chat message,
@@ -9,7 +10,7 @@ class NpcCommandService {
 
   final SupabaseClient _client;
 
-  Future<String> ask({
+  Future<NpcCommandResult> ask({
     required String employeeName,
     required String employeeRole,
     required String command,
@@ -26,8 +27,23 @@ class NpcCommandService {
     );
     final data = response.data;
     if (data is Map && data['reply'] is String) {
-      return data['reply'] as String;
+      return NpcCommandResult(
+        reply: data['reply'] as String,
+        usage: _parseUsage(data['usage']),
+      );
     }
     throw Exception('예상치 못한 응답 형식입니다: ${response.data}');
+  }
+
+  NpcUsage? _parseUsage(Object? usage) {
+    if (usage is! Map) {
+      return null;
+    }
+    int? asInt(Object? value) => value is int ? value : (value as num?)?.toInt();
+    return NpcUsage(
+      promptTokens: asInt(usage['prompt_tokens']),
+      completionTokens: asInt(usage['completion_tokens']),
+      totalTokens: asInt(usage['total_tokens']),
+    );
   }
 }

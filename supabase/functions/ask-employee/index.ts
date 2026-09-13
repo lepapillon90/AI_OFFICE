@@ -124,7 +124,9 @@ Deno.serve(async (req) => {
     const rawReply = data?.choices?.[0]?.message?.content ?? "(응답을 받지 못했습니다)";
     const reply = stripMarkdown(rawReply);
 
-    return new Response(JSON.stringify({ reply }), {
+    // OpenAI's chat completions response reports token usage for this call —
+    // passed through as-is so the client can track usage/cost per employee.
+    return new Response(JSON.stringify({ reply, usage: data?.usage ?? null }), {
       headers: { ...corsHeaders, "content-type": "application/json" },
     });
   } catch (error) {

@@ -103,6 +103,23 @@ class ComputerPopup extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Builder(builder: (context) {
+                  final usage = game.usageFor(employee);
+                  if (usage.calls == 0) {
+                    return const SizedBox.shrink();
+                  }
+                  final tokenPart =
+                      usage.totalTokens > 0 ? ' · ${usage.totalTokens} 토큰' : '';
+                  return Text(
+                    '호출 ${usage.calls}회 (성공 ${usage.successes} · 실패 '
+                    '${usage.failures})$tokenPart',
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                    ),
+                  );
+                }),
                 const SizedBox(height: 24),
                 const Text(
                   '업무 지시',
@@ -188,6 +205,14 @@ class _TaskTile extends StatelessWidget {
                 task.status == NpcTaskStatus.success
                     ? '재시도 끝에 성공 (${task.attempts}회 시도)'
                     : '재시도했지만 실패 (${task.attempts}회 시도)',
+                style: const TextStyle(color: Colors.white38, fontSize: 12),
+              ),
+            ),
+          if (task.usage?.totalTokens != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${task.usage!.totalTokens} 토큰 사용',
                 style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ),
