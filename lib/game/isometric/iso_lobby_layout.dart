@@ -20,13 +20,13 @@ class IsoLobbyPlacement {
 
 /// First-floor configuration.
 ///
-/// The floor foundation is a 24x16 grid of 64px tiles (1536x1024 world).
+/// The floor foundation is a 28x18 grid of 64px tiles (1792x1152 world).
 /// It deliberately contains no furniture or structure art: those will be
 /// added only after the floor plan has been approved.
 abstract final class IsoLobbyLayout {
   static const _floorTileSize = 64.0;
-  static const _floorColumns = 24;
-  static const _floorRows = 16;
+  static const _floorColumns = 28;
+  static const _floorRows = 18;
   static final Vector2 _worldSize =
       Vector2(_floorColumns * _floorTileSize, _floorRows * _floorTileSize);
 
@@ -86,16 +86,16 @@ abstract final class IsoLobbyLayout {
     // column bands scaled up from the original 15-column layout's
     // (<=2 water / 3 planter / 6-8 entrance) split.
     if (row == lastRow) {
-      if (column <= 3 || column >= 19) {
+      if (column <= 3 || column >= 24) {
         return (
           category: 'shallow_water',
-          variant: column == 1 || column == 22 ? 'variation_a' : 'base',
+          variant: column == 1 || column == 26 ? 'variation_a' : 'base',
         );
       }
-      if (column >= 9 && column <= 13) {
+      if (column >= 11 && column <= 16) {
         return (category: 'indoor_entrance', variant: 'base');
       }
-      if (column == 4 || column == 18) {
+      if (column == 4 || column == 23) {
         return (category: 'planter_edge', variant: 'base');
       }
       return (category: 'pond_walkway', variant: 'base');
@@ -106,11 +106,11 @@ abstract final class IsoLobbyLayout {
     if (row == 0) {
       return (
         category:
-            column >= 9 && column <= 13 ? 'elevator_front' : 'stair_landing',
-        variant: column == 9 || column == 13 ? 'edge' : 'base',
+            column >= 11 && column <= 16 ? 'elevator_front' : 'stair_landing',
+        variant: column == 11 || column == 16 ? 'edge' : 'base',
       );
     }
-    if (row <= 3 && column >= 9 && column <= 13) {
+    if (row <= 3 && column >= 11 && column <= 16) {
       return (
         category: 'elevator_front',
         variant: row == 3 ? 'border_trim' : 'variation_a',
@@ -118,19 +118,19 @@ abstract final class IsoLobbyLayout {
     }
 
     // Commercial zones: cafe left, store right, and a softer lounge below.
-    if (column <= 7 && row >= 6 && row <= 13) {
+    if (column <= 8 && row >= 6 && row <= 15) {
       return (
         category: 'cafe',
         variant: (column + row).isEven ? 'base' : 'variation_a',
       );
     }
-    if (column >= 16 && row >= 6 && row <= 10) {
+    if (column >= 19 && row >= 6 && row <= 12) {
       return (
         category: 'store',
         variant: (column + row).isEven ? 'base' : 'variation_b',
       );
     }
-    if (column >= 16 && row >= 11 && row <= 13) {
+    if (column >= 19 && row >= 13 && row <= 15) {
       return (
         category: 'lounge',
         variant: (column + row).isEven ? 'base' : 'variation_a',
@@ -138,7 +138,7 @@ abstract final class IsoLobbyLayout {
     }
 
     // A planted edge frames the middle without changing its walkable area.
-    if ((column == 8 || column == 14) && row >= 6 && row <= 11) {
+    if ((column == 9 || column == 18) && row >= 6 && row <= 13) {
       return (
         category: 'planter_edge',
         variant: row == 6 || row == 11 ? 'transition' : 'border_trim',
@@ -146,7 +146,7 @@ abstract final class IsoLobbyLayout {
     }
 
     // The central circulation path uses the warmer reception lobby treatment.
-    if (column >= 8 && column <= 14 && row >= 4 && row <= 7) {
+    if (column >= 10 && column <= 17 && row >= 4 && row <= 8) {
       return (
         category: 'reception_lobby',
         variant: (column + row).isEven ? 'base' : 'variation_a',

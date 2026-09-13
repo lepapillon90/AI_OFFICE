@@ -45,19 +45,19 @@ void main() {
     expect(paths, everyElement(startsWith('office_1f/v3/floor/')));
   });
 
-  test('floor tiles fill the 24 by 16 foundation', () {
+  test('floor tiles fill the 28 by 18 foundation', () {
     final worldSize = IsoLobbyLayout.floorLayout.worldSize;
     final placements = IsoLobbyLayout.placements;
     final ground = placements.firstWhere(
       (item) => item.assetPath.startsWith('office_1f/v3/floor/'),
     );
     expect(ground.screenSize, Vector2.all(64));
+    expect(worldSize, Vector2(1792, 1152));
     expect(
       placements
           .where((item) => item.assetPath.startsWith('office_1f/v3/floor/'))
           .length,
-      // 24 columns x 16 rows, per IsoLobbyLayout's base grid spec.
-      24 * 16,
+      28 * 18,
     );
     for (final placement in placements) {
       expect(placement.worldFootPoint.x, inInclusiveRange(0, worldSize.x));
