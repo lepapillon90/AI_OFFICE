@@ -19,13 +19,38 @@ class IsoLobbyPlacement {
 }
 
 /// Collision and layered-art configuration for the first-floor lobby.
+///
+/// Base spec: a 24x16 grid of 64px tiles (1536x1024 world). The hand-placed
+/// wall/furniture/overlay geometry below predates this grid — it was tuned
+/// pixel-by-pixel for the previous 15x11/960x704 layout's artwork — so
+/// until new art exists at the bigger canvas, [scaleX]/[scaleY] stretch it
+/// proportionally rather than freehand redesigning the collision shapes.
+/// [scaleX]/[scaleY] are exposed so tests can derive expectations from the
+/// same factors instead of duplicating scaled magic numbers.
 abstract final class IsoLobbyLayout {
-  static final Vector2 _worldSize = Vector2(960, 704);
   static const _floorTileSize = 64.0;
+  static const _floorColumns = 24;
+  static const _floorRows = 16;
+  static final Vector2 _worldSize =
+      Vector2(_floorColumns * _floorTileSize, _floorRows * _floorTileSize);
 
-  // Exterior cutouts and their wall faces follow the stepped floor artwork.
-  // Fill the exterior as well as the face so a large move cannot land outside.
-  static const List<Rect> wallBlockers = [
+  static const scaleX = 1536 / 960; // 8/5
+  static const scaleY = 1024 / 704; // 16/11
+
+  static Rect _scaleRect(Rect rect) => Rect.fromLTWH(
+        rect.left * scaleX,
+        rect.top * scaleY,
+        rect.width * scaleX,
+        rect.height * scaleY,
+      );
+
+  static Vector2 _scalePoint(double x, double y) =>
+      Vector2(x * scaleX, y * scaleY);
+
+  // Exterior cutouts and their wall faces, at the original artwork's scale
+  // (see the class doc comment) — [wallBlockers] below stretches these to
+  // the current world size.
+  static const List<Rect> _legacyWallBlockers = [
     Rect.fromLTWH(0, 0, 960, 88),
     Rect.fromLTWH(0, 88, 352, 68),
     Rect.fromLTWH(608, 88, 352, 68),
@@ -40,8 +65,9 @@ abstract final class IsoLobbyLayout {
     Rect.fromLTWH(336, 592, 288, 112),
   ];
 
-  // Bases of the props, excluding their tall canopies and transparent padding.
-  static const List<Rect> furnitureBlockers = [
+  // Bases of the props, excluding their tall canopies and transparent
+  // padding — also at the original artwork's scale (see above).
+  static const List<Rect> _legacyFurnitureBlockers = [
     Rect.fromLTWH(400, 192, 160, 96),
     Rect.fromLTWH(96, 320, 240, 224),
     Rect.fromLTWH(624, 320, 240, 192),
@@ -49,13 +75,19 @@ abstract final class IsoLobbyLayout {
     Rect.fromLTWH(634, 520, 220, 104), // Lounge seats and coffee table.
   ];
 
+  static final List<Rect> wallBlockers =
+      _legacyWallBlockers.map(_scaleRect).toList();
+
+  static final List<Rect> furnitureBlockers =
+      _legacyFurnitureBlockers.map(_scaleRect).toList();
+
   static final FloorLayout floorLayout = FloorLayout(
     worldSize: _worldSize.clone(),
     blockers: [
       ...wallBlockers,
       ...furnitureBlockers,
     ],
-    elevatorPosition: Vector2(480, 80),
+    elevatorPosition: _scalePoint(480, 80),
   );
 
   /// Tile-by-tile floor construction for the first floor.
@@ -67,41 +99,41 @@ abstract final class IsoLobbyLayout {
     ..._floorPlacements(),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/reception.png',
-      worldFootPoint: Vector2(480, 288),
+      worldFootPoint: _scalePoint(480, 288),
       screenSize: Vector2(240, 240),
     ),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/cafe.png',
-      worldFootPoint: Vector2(216, 544),
+      worldFootPoint: _scalePoint(216, 544),
       screenSize: Vector2(300, 300),
     ),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/store.png',
-      worldFootPoint: Vector2(744, 512),
+      worldFootPoint: _scalePoint(744, 512),
       screenSize: Vector2(280, 280),
     ),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/lounge.png',
-      worldFootPoint: Vector2(744, 640),
+      worldFootPoint: _scalePoint(744, 640),
       screenSize: Vector2(240, 240),
     ),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/planters.png',
-      worldFootPoint: Vector2(480, 480),
+      worldFootPoint: _scalePoint(480, 480),
       screenSize: Vector2(220, 220),
     ),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/foreground.png',
-      worldFootPoint: Vector2(480, 704),
-      screenSize: Vector2(960, 240),
+      worldFootPoint: Vector2(_worldSize.x / 2, _worldSize.y),
+      screenSize: Vector2(_worldSize.x, 240),
       layerOffset: 100000,
     ),
   ];
 
   static List<IsoLobbyPlacement> _floorPlacements() {
     final tiles = <IsoLobbyPlacement>[];
-    for (var row = 0; row < 11; row++) {
-      for (var column = 0; column < 15; column++) {
+    for (var row = 0; row < _floorRows; row++) {
+      for (var column = 0; column < _floorColumns; column++) {
         final selection = _floorSelectionFor(column, row);
         tiles.add(
           IsoLobbyPlacement(
@@ -124,53 +156,58 @@ abstract final class IsoLobbyLayout {
     int column,
     int row,
   ) {
+    const lastRow = _floorRows - 1;
+
     // The outdoor threshold at the lower edge establishes the entrance,
-    // shallow ponds, and the planted borders before furniture is added.
-    if (row == 10) {
-      if (column <= 2 || column >= 12) {
+    // shallow ponds, and the planted borders before furniture is added —
+    // column bands scaled up from the original 15-column layout's
+    // (<=2 water / 3 planter / 6-8 entrance) split.
+    if (row == lastRow) {
+      if (column <= 3 || column >= 19) {
         return (
           category: 'shallow_water',
-          variant: column == 1 || column == 13 ? 'variation_a' : 'base',
+          variant: column == 1 || column == 22 ? 'variation_a' : 'base',
         );
       }
-      if (column == 6 || column == 7 || column == 8) {
+      if (column >= 9 && column <= 13) {
         return (category: 'indoor_entrance', variant: 'base');
       }
-      if (column == 3 || column == 11) {
+      if (column == 4 || column == 18) {
         return (category: 'planter_edge', variant: 'base');
       }
       return (category: 'pond_walkway', variant: 'base');
     }
 
-    // The top band gives the lift and stair landing a colder stone finish.
+    // The top band gives the lift and stair landing a colder stone finish —
+    // scaled up from the original 3-row/3-column elevator alcove.
     if (row == 0) {
       return (
         category:
-            column >= 6 && column <= 8 ? 'elevator_front' : 'stair_landing',
-        variant: column == 6 || column == 8 ? 'edge' : 'base',
+            column >= 9 && column <= 13 ? 'elevator_front' : 'stair_landing',
+        variant: column == 9 || column == 13 ? 'edge' : 'base',
       );
     }
-    if (row <= 2 && column >= 6 && column <= 8) {
+    if (row <= 3 && column >= 9 && column <= 13) {
       return (
         category: 'elevator_front',
-        variant: row == 2 ? 'border_trim' : 'variation_a',
+        variant: row == 3 ? 'border_trim' : 'variation_a',
       );
     }
 
     // Commercial zones: cafe left, store right, and a softer lounge below.
-    if (column <= 4 && row >= 4 && row <= 9) {
+    if (column <= 7 && row >= 6 && row <= 13) {
       return (
         category: 'cafe',
         variant: (column + row).isEven ? 'base' : 'variation_a',
       );
     }
-    if (column >= 10 && row >= 4 && row <= 7) {
+    if (column >= 16 && row >= 6 && row <= 10) {
       return (
         category: 'store',
         variant: (column + row).isEven ? 'base' : 'variation_b',
       );
     }
-    if (column >= 10 && row >= 8 && row <= 9) {
+    if (column >= 16 && row >= 11 && row <= 13) {
       return (
         category: 'lounge',
         variant: (column + row).isEven ? 'base' : 'variation_a',
@@ -178,15 +215,15 @@ abstract final class IsoLobbyLayout {
     }
 
     // A planted edge frames the middle without changing its walkable area.
-    if ((column == 5 || column == 9) && row >= 4 && row <= 8) {
+    if ((column == 8 || column == 14) && row >= 6 && row <= 11) {
       return (
         category: 'planter_edge',
-        variant: row == 4 || row == 8 ? 'transition' : 'border_trim',
+        variant: row == 6 || row == 11 ? 'transition' : 'border_trim',
       );
     }
 
     // The central circulation path uses the warmer reception lobby treatment.
-    if (column >= 5 && column <= 9 && row >= 3 && row <= 5) {
+    if (column >= 8 && column <= 14 && row >= 4 && row <= 7) {
       return (
         category: 'reception_lobby',
         variant: (column + row).isEven ? 'base' : 'variation_a',
