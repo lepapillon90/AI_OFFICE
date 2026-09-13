@@ -47,7 +47,7 @@
 - Supabase Realtime으로 사용자 위치 공유 ✅
 - 같은 공간의 다른 사용자 표시 ✅ (같은 층에 있을 때만 렌더링)
 - 공간 채팅 ✅ (Realtime Broadcast + `messages` 테이블, `docs/PHASE5_MULTIPLAYER.md`)
-- 아이디로 구성원 초대 ✅ (`invites` 테이블, 대표·인사관리자가 역할 지정해 초대 → 로그인 시 자동 합류, `docs/PHASE4_SUPABASE.md`)
+- 아이디로 구성원 초대 ✅ — 실제 계정으로 검증 완료(`invites` 테이블, 대표·인사관리자가 역할 지정해 초대 → 로그인 시 자동 합류, `docs/PHASE4_SUPABASE.md`)
 - 직원별 대화 기록 (다음 단계, Phase 6과 함께 진행)
 
 완료 기준: 두 사용자가 같은 회사 오피스에서 서로의 이동과 채팅을 실시간으로 확인합니다.
