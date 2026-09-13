@@ -1,3 +1,4 @@
+import 'package:ai_office/screens/office_screen.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -9,6 +10,6 @@ class OfficeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const MaterialApp(
-        home: Scaffold(body: Center(child: Text('AI Office'))),
+        home: OfficeScreen(),
       );
 }
