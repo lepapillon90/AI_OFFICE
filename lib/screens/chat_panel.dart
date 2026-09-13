@@ -39,6 +39,18 @@ class _ChatPanelState extends State<ChatPanel> {
   String? _selectedRoomName;
 
   @override
+  void initState() {
+    super.initState();
+    final pendingPeer = widget.game.pendingChatPeerName;
+    if (pendingPeer != null) {
+      widget.game.consumePendingChatPeer();
+      _tabIndex = 1;
+      _selectedRoomKey = 'npc:$pendingPeer';
+      _selectedRoomName = pendingPeer;
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     _publicScrollController.dispose();

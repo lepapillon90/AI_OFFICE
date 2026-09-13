@@ -1,17 +1,39 @@
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
+import 'package:ai_office/game/office_game.dart';
 import 'package:flutter/material.dart';
 
-/// Local-only demonstration controls for a workstation's AI employee.
+/// A workstation's AI employee: status at a glance, "대화하기" to open a
+/// chat with them (same `@employee` pipeline as the space chat), and
+/// "작업 확인" to see their most recent reply without leaving the popup.
 class ComputerPopup extends StatelessWidget {
-  const ComputerPopup({required this.employee, required this.onClose, super.key});
+  const ComputerPopup({
+    required this.employee,
+    required this.game,
+    required this.onClose,
+    super.key,
+  });
 
   final AiEmployee employee;
+  final OfficeGame game;
   final VoidCallback onClose;
 
-  void _showUnavailableMessage(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('데모 기능은 현재 준비 중입니다.')),
+  void _showLastReply(BuildContext context) {
+    final reply = game.lastReplyFrom(employee);
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('${employee.name}의 최근 작업'),
+        content: Text(
+          reply?.body ?? '아직 대화한 내역이 없습니다. "대화하기"로 업무를 지시해보세요.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -77,14 +99,14 @@ class ComputerPopup extends StatelessWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => _showUnavailableMessage(context),
+                        onPressed: () => game.openChatWithEmployee(employee),
                         child: const Text('대화하기'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => _showUnavailableMessage(context),
+                        onPressed: () => _showLastReply(context),
                         child: const Text('작업 확인'),
                       ),
                     ),

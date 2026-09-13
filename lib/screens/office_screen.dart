@@ -168,6 +168,7 @@ class OfficeScreen extends StatelessWidget {
             if (officeGame.isComputerPopupOpen)
               ComputerPopup(
                 employee: officeGame.nearbyEmployee!,
+                game: officeGame,
                 onClose: officeGame.closeComputerPopup,
               ),
             if (officeGame.isElevatorPopupOpen) ElevatorPopup(game: officeGame),

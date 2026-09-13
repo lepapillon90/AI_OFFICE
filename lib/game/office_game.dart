@@ -261,6 +261,33 @@ class OfficeGame extends FlameGame
     notifyListeners();
   }
 
+  /// Set by [openChatWithEmployee] so [ChatPanel] can open straight into
+  /// that employee's room instead of the room list. Consumed (cleared) by
+  /// [ChatPanel] once it's read it, so it only applies to the panel open
+  /// that follows — later manual chat opens land on the room list as usual.
+  String? _pendingChatPeerName;
+  String? get pendingChatPeerName => _pendingChatPeerName;
+  void consumePendingChatPeer() => _pendingChatPeerName = null;
+
+  /// Closes the computer popup and opens the space chat directly into
+  /// [employee]'s private room — the "대화하기" button's target.
+  void openChatWithEmployee(AiEmployee employee) {
+    closeComputerPopup();
+    _pendingChatPeerName = employee.name;
+    openChat();
+  }
+
+  /// The most recent reply [employee] has sent in chat, or null if none
+  /// yet — backs the computer popup's "작업 확인" button.
+  ChatMessage? lastReplyFrom(AiEmployee employee) {
+    for (final message in _chatMessages.reversed) {
+      if (message.isNpc && message.senderName == employee.name) {
+        return message;
+      }
+    }
+    return null;
+  }
+
   /// Sends [body] as a space chat message: shows it locally right away,
   /// broadcasts it to other signed-in users, and reports it via
   /// [onChatMessageSent] for the host app to persist.
