@@ -13,6 +13,19 @@ const corsHeaders = {
 
 const OPENAI_MODEL = "gpt-4o-mini";
 
+// ChatPanel renders plain text (no markdown support), so strip common
+// markdown syntax the model might still emit despite the system prompt
+// asking it not to — a belt-and-suspenders fallback, not the primary fix.
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*]\s+/gm, "· ")
+    .trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -58,7 +71,9 @@ Deno.serve(async (req) => {
       `역할은 '${employeeRole}'입니다. 동료가 채팅으로 업무를 요청하면 ` +
       `그 역할에 맞게 짧고 실무적인 한국어로 답하세요. 실제로 파일을 ` +
       `만들거나 외부 시스템을 조작할 수는 없으니, 할 수 있는 조언이나 ` +
-      `결과물(요약, 목록, 초안 등)을 텍스트로 바로 제공하세요.`;
+      `결과물(요약, 목록, 초안 등)을 텍스트로 바로 제공하세요. 이 채팅창은 ` +
+      `마크다운을 렌더링하지 않으니 **, #, - 같은 마크다운 기호를 절대 쓰지 ` +
+      `말고, 목록도 "1) 항목" 처럼 순수 텍스트로만 작성하세요.`;
 
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -88,7 +103,8 @@ Deno.serve(async (req) => {
     }
 
     const data = await openaiResponse.json();
-    const reply = data?.choices?.[0]?.message?.content ?? "(응답을 받지 못했습니다)";
+    const rawReply = data?.choices?.[0]?.message?.content ?? "(응답을 받지 못했습니다)";
+    const reply = stripMarkdown(rawReply);
 
     return new Response(JSON.stringify({ reply }), {
       headers: { ...corsHeaders, "content-type": "application/json" },
