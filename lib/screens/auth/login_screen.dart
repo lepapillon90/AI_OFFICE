@@ -1,7 +1,11 @@
+import 'package:ai_office/data/username_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Email + password sign-in, with an inline toggle to sign up instead.
+/// Username + password sign-in, with an inline toggle to sign up instead.
+///
+/// Supabase Auth is email-based under the hood; the username is mapped to
+/// a synthetic email address (see [UsernameAuth]) rather than a real one.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -11,7 +15,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _isSignUp = false;
@@ -20,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -36,14 +40,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final client = Supabase.instance.client;
+      final email = UsernameAuth.toEmail(_usernameController.text.trim());
       if (_isSignUp) {
         await client.auth.signUp(
-          email: _emailController.text.trim(),
+          email: email,
           password: _passwordController.text,
         );
       } else {
         await client.auth.signInWithPassword(
-          email: _emailController.text.trim(),
+          email: email,
           password: _passwordController.text,
         );
       }
@@ -82,12 +87,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
                   TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: '이메일'),
-                    validator: (value) => (value == null || !value.contains('@'))
-                        ? '올바른 이메일을 입력하세요'
-                        : null,
+                    controller: _usernameController,
+                    decoration: const InputDecoration(
+                      labelText: '아이디',
+                      helperText: '영문/숫자/밑줄 3~20자',
+                    ),
+                    validator: (value) =>
+                        (value == null || !UsernameAuth.isValidUsername(value))
+                            ? '영문/숫자/밑줄 3~20자로 입력하세요'
+                            : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(

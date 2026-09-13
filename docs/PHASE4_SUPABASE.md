@@ -116,7 +116,9 @@ drop policy if exists "owner_delete_employees" on employees;
 
 ## 인증
 
-Authentication → Providers → Email이 켜져 있어야 합니다 (기본값). 이메일 확인(Confirm email)을 꺼두면 가입 즉시 로그인되어 데모 흐름이 더 매끄럽습니다: Authentication → Settings → "Confirm email" 토글을 꺼주세요 (선택 사항, 데모/개발 단계에서만 권장).
+Authentication → Providers → Email이 켜져 있어야 합니다 (기본값).
+
+**로그인은 이메일이 아니라 "아이디"로 표시됩니다.** Supabase Auth는 내부적으로 항상 이메일 기반이라, 앱에서 입력한 아이디를 `아이디@ai-office.local` 형태의 가상 이메일로 변환해서 사용합니다(`lib/data/username_auth.dart`). 실제 메일함으로 발송되는 주소가 아니므로 **Authentication → Settings → "Confirm email"을 반드시 꺼두세요** — 켜져 있으면 도착하지 않을 확인 메일을 기다리게 되어 가입이 막힙니다.
 
 ## 앱 동작
 
