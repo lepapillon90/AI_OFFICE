@@ -30,22 +30,32 @@ class OfficeGame extends FlameGame
 
   OfficeGame._({required Vector2 playerPosition}) {
     _employees = List.of(sampleEmployees);
-    computers = _buildComputers();
-    elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition);
+    computers = _buildComputers()..forEach((c) => c.priority = _furniturePriority);
+    elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
+      ..priority = _furniturePriority;
     player = OfficePlayer(
       position: playerPosition,
       onPositionChanged: _onPlayerMoved,
       onHoverChanged: _setPlayerHovered,
       onTap: openProfileCard,
-    );
+    )..priority = _playerPriority;
+    final npcs = _buildNpcs()..forEach((npc) => npc.priority = _npcPriority);
     _floorComponents = {
       Floor.lobby: [LobbyMap()],
-      Floor.workspace: [OfficeMap(), ...computers, ..._buildNpcs()],
+      Floor.workspace: [OfficeMap(), ...computers, ...npcs],
       Floor.projectRoom: [ProjectRoomMap()],
       Floor.executive: [ExecutiveMap()],
     };
     _onPlayerMoved(player.position);
   }
+
+  // Floor maps render at the default priority (0); these draw on top of
+  // them so the elevator, NPCs, and player never appear "under the floor"
+  // regardless of the order components are added/removed when switching
+  // floors.
+  static const _furniturePriority = 1;
+  static const _npcPriority = 2;
+  static const _playerPriority = 3;
 
   late final OfficePlayer player;
   late final List<ComputerInteraction> computers;
