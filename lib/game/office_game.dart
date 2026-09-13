@@ -5,7 +5,6 @@ import 'package:ai_office/game/player/office_player.dart';
 import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 import 'package:flame/input.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -34,6 +33,19 @@ class OfficeGame extends FlameGame
   /// Whether the computer interaction state is currently open.
   bool get isComputerPopupOpen => _isComputerPopupOpen;
 
+  /// Whether the player is close enough to use the computer.
+  bool get isComputerNearby => _isPlayerNearComputer;
+
+  /// Opens the computer popup when the player is in interaction range.
+  void openComputerPopup() {
+    if (_isPlayerNearComputer) {
+      _setComputerPopupOpen(true);
+    }
+  }
+
+  /// Closes the computer popup and restores normal game input.
+  void closeComputerPopup() => _setComputerPopupOpen(false);
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -54,9 +66,9 @@ class OfficeGame extends FlameGame
   /// Applies the computer interaction keys without creating presentation UI.
   void handleInteractionKey(LogicalKeyboardKey key) {
     if (key == LogicalKeyboardKey.keyE && _isPlayerNearComputer) {
-      _setComputerPopupOpen(true);
+      openComputerPopup();
     } else if (key == LogicalKeyboardKey.escape && _isComputerPopupOpen) {
-      _setComputerPopupOpen(false);
+      closeComputerPopup();
     }
   }
 
