@@ -31,16 +31,16 @@
 
 완료 기준: 각 컴퓨터가 한 AI 직원과 연결되고 현재 상태가 맵에서 보입니다.
 
-## Phase 4 — 회사 데이터와 계정 🚧
+## Phase 4 — 회사 데이터와 계정 ✅
 
-- Supabase Auth 로그인 (이메일+비밀번호)
-- 회사·직원 데이터 모델 및 RLS (`docs/PHASE4_SUPABASE.md`)
+- Supabase Auth 로그인 (아이디+비밀번호, 내부적으로 이메일 매핑)
+- 회사·직원 데이터 모델 및 RLS, owner/hr_manager/member 역할 (`docs/PHASE4_SUPABASE.md`)
 - 직원 역할과 AI 제공자 설정 저장
 - 오피스 레이아웃 저장 (이연)
 
 완료 기준: 로그인한 사용자가 자신의 회사와 직원 구성을 저장·복원합니다.
 
-앱 코드는 구현 완료. DB 스키마는 사용자가 Supabase SQL Editor에서 `docs/PHASE4_SUPABASE.md`의 SQL을 실행해야 실제로 동작합니다.
+실제 계정으로 검증 완료: 회원가입 → 직원 정보 수정 → 로그아웃 → 재로그인 후에도 수정 내용이 그대로 복원됨을 확인.
 
 ## Phase 5 — 멀티플레이와 채팅
 
