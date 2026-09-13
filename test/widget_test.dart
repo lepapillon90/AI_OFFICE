@@ -36,7 +36,7 @@ void main() {
     expect(find.text('백엔드 개발자'), findsOneWidget);
     expect(find.text('대기 중'), findsOneWidget);
     expect(find.text('대화하기'), findsOneWidget);
-    expect(find.text('작업 확인'), findsOneWidget);
+    expect(find.text('작업 이력'), findsOneWidget);
   });
 
   testWidgets('shows the computer prompt only while nearby and closed',

@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { employeeName, employeeRole, command } = await req.json();
+    const { employeeName, employeeRole, command, history } = await req.json();
     if (!employeeName || !employeeRole || !command) {
       return new Response(
         JSON.stringify({ error: "employeeName, employeeRole, command required" }),
@@ -71,9 +71,26 @@ Deno.serve(async (req) => {
       `역할은 '${employeeRole}'입니다. 동료가 채팅으로 업무를 요청하면 ` +
       `그 역할에 맞게 짧고 실무적인 한국어로 답하세요. 실제로 파일을 ` +
       `만들거나 외부 시스템을 조작할 수는 없으니, 할 수 있는 조언이나 ` +
-      `결과물(요약, 목록, 초안 등)을 텍스트로 바로 제공하세요. 이 채팅창은 ` +
-      `마크다운을 렌더링하지 않으니 **, #, - 같은 마크다운 기호를 절대 쓰지 ` +
-      `말고, 목록도 "1) 항목" 처럼 순수 텍스트로만 작성하세요.`;
+      `결과물(요약, 목록, 초안 등)을 텍스트로 바로 제공하세요. 이전 대화 ` +
+      `내역이 함께 주어지면 그 맥락(이미 답한 내용, 지시받은 조건 등)을 ` +
+      `참고해서 답하세요. 이 채팅창은 마크다운을 렌더링하지 않으니 **, #, ` +
+      `- 같은 마크다운 기호를 절대 쓰지 말고, 목록도 "1) 항목" 처럼 순수 ` +
+      `텍스트로만 작성하세요.`;
+
+    // Prior turns with this same employee, so multi-turn follow-ups (e.g.
+    // "그럼 그중 두 번째 항목만 더 자세히") have something to refer back to.
+    const historyMessages = Array.isArray(history)
+      ? history
+          .filter(
+            (turn: unknown): turn is { role: string; content: string } =>
+              !!turn &&
+              typeof turn === "object" &&
+              ((turn as { role?: unknown }).role === "user" ||
+                (turn as { role?: unknown }).role === "assistant") &&
+              typeof (turn as { content?: unknown }).content === "string",
+          )
+          .map((turn) => ({ role: turn.role, content: turn.content }))
+      : [];
 
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -86,6 +103,7 @@ Deno.serve(async (req) => {
         max_tokens: 400,
         messages: [
           { role: "system", content: systemPrompt },
+          ...historyMessages,
           { role: "user", content: command },
         ],
       }),

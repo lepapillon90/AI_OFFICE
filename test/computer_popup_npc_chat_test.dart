@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_office/game/npc/npc_status.dart';
+import 'package:ai_office/game/npc/npc_task.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/office_screen.dart';
 import 'package:flame/components.dart';
@@ -57,6 +58,7 @@ void main() {
         required employeeName,
         required employeeRole,
         required command,
+        required history,
       }) =>
           completer.future,
     );
@@ -85,24 +87,101 @@ void main() {
     expect(afterCall.status, NpcStatus.meeting);
   });
 
-  testWidgets('a failed @employee command sets its status to error',
+  testWidgets(
+      'a failed @employee command retries once, then sets its status to '
+      'error and records the failed attempts on its task history',
       (tester) async {
+    var callCount = 0;
     final game = OfficeGame(
       askEmployee: ({
         required employeeName,
         required employeeRole,
         required command,
-      }) =>
-          Future<String>.error('network boom'),
+        required history,
+      }) {
+        callCount++;
+        return Future<String>.error('network boom');
+      },
     );
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
     await tester.pump();
 
+    final yuna = game.employees.firstWhere((e) => e.name == '유나');
     game.sendChatMessage('@유나 상태 보고해줘');
+    // Two attempts (the automatic retry-once-on-failure) each need their
+    // own microtask turn to flush the already-errored Future.
+    await tester.pump();
+    await tester.pump();
     await tester.pump();
     await tester.pump();
 
     final after = game.employees.firstWhere((e) => e.name == '유나');
     expect(after.status, NpcStatus.error);
+    expect(callCount, 2);
+
+    final tasks = game.tasksFor(yuna);
+    expect(tasks, hasLength(1));
+    expect(tasks.first.status, NpcTaskStatus.error);
+    expect(tasks.first.attempts, 2);
+  });
+
+  testWidgets(
+      'a successful @employee command is recorded on the task history with '
+      'a single attempt', (tester) async {
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) =>
+          Future.value('보고 끝났습니다'),
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    final noah = game.employees.firstWhere((e) => e.name == '노아');
+    game.sendChatMessage('@노아 상태 보고해줘');
+    await tester.pump();
+    await tester.pump();
+
+    final tasks = game.tasksFor(noah);
+    expect(tasks, hasLength(1));
+    expect(tasks.first.status, NpcTaskStatus.success);
+    expect(tasks.first.attempts, 1);
+    expect(tasks.first.result, '보고 끝났습니다');
+  });
+
+  testWidgets(
+      'a follow-up @employee command includes the prior exchange as history',
+      (tester) async {
+    List<Map<String, String>>? capturedHistory;
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) {
+        capturedHistory = history;
+        return Future.value('답변');
+      },
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    game.sendChatMessage('@하나 첫 번째 질문');
+    await tester.pump();
+    await tester.pump();
+    expect(capturedHistory, isEmpty);
+
+    game.sendChatMessage('@하나 두 번째 질문');
+    await tester.pump();
+    await tester.pump();
+
+    expect(capturedHistory, [
+      {'role': 'user', 'content': '첫 번째 질문'},
+      {'role': 'assistant', 'content': '답변'},
+    ]);
   });
 }

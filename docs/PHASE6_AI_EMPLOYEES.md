@@ -48,10 +48,20 @@ supabase secrets set OPENAI_API_KEY=본인의_키
 1. `OfficeGame.sendChatMessage()`가 `@이름`을 파싱 — 같은 공간의 다른 로그인 사용자 이름과 먼저 대조(귓속말), 아니면 AI 직원 이름과 대조(명령)
 2. AI 직원 명령이면 `NpcCommandService`가 `ask-employee` Edge Function을 호출하고, 응답을 그 직원 이름으로 채팅에 새 메시지로 추가(공개 메시지, 귓속말 아님)
 3. 귓속말은 `ChatMessage.toUserId`가 채워진 채로 브로드캐스트·저장되고, `ChatPanel`이 발신자·수신자 본인에게만 표시
-4. Edge Function이 아직 배포되지 않았거나 `ANTHROPIC_API_KEY`가 없으면, AI 직원 명령 시 안내 메시지만 표시되고 앱은 정상 동작
+4. Edge Function이 아직 배포되지 않았거나 `OPENAI_API_KEY`가 없으면, AI 직원 명령 시 안내 메시지만 표시되고 앱은 정상 동작
+
+## 여러 턴에 걸친 대화 맥락
+
+`OfficeGame`이 그 직원과 이미 나눈 최근 대화(최대 6턴, `_historyFor`)를 `askEmployee`의 `history` 인자로 함께 넘기고, `NpcCommandService`·`ask-employee` Edge Function이 이를 OpenAI 요청의 `messages` 배열에 시스템 프롬프트와 새 명령 사이로 끼워 넣습니다. 히스토리는 이미 로드된 채팅 기록(`messages` 테이블)에서 그 직원과 주고받은 메시지만 걸러 만들어지므로, 로그아웃 후 재로그인해도 이어집니다. `docs/STATUS.md`에 정리된 대로 실제 OpenAI 응답이 이전 맥락을 반영하는지는 자동화 브라우저 환경 한계로 실제 클릭으로는 검증하지 못했고, `test/computer_popup_npc_chat_test.dart`의 히스토리 테스트로 코드 경로만 확인했습니다.
+
+## 구조화된 업무 기록과 오류/재시도
+
+- `OfficeGame.tasksFor(employee)`가 그 직원에게 보낸 명령들을 `NpcTask`(명령, 상태 pending/success/error, 결과 또는 에러 메시지, 시도 횟수) 목록으로 최근 20건까지 보관합니다 — 컴퓨터 팝업의 "작업 이력" 버튼이 이 목록을 보여줍니다.
+- `askEmployee` 호출이 실패하면 한 번 자동으로 재시도하고, 그래도 실패하면 그때 비로소 직원 상태를 "오류"로 바꾸고 `NpcTask`에 시도 횟수(2)와 에러 메시지를 기록합니다. 첫 시도에서 성공하면 시도 횟수는 1로 기록됩니다.
+- 이 기록은 현재 세션 메모리에만 있고 Supabase에는 저장하지 않습니다 — 새로고침/재로그인하면 사라지며, 이미 저장되는 채팅 기록(`messages` 테이블, `is_npc`)과는 별개입니다.
 
 ## 이연된 범위
 
 - AI 직원의 실제 업무 수행(파일 생성, 외부 도구 호출 등)은 이번 범위 아님 — 텍스트 응답만 제공
-- 대화 맥락(이전 메시지 기억)은 없음 — 매 명령이 독립적으로 처리됨
+- `NpcTask` 기록의 Supabase 영속화(재로그인 후에도 "작업 이력" 유지)는 이번 범위 아님
 - 귓속말의 DB 레벨 프라이버시(RLS)는 이번 범위 아님 — 화면에서만 숨김

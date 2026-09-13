@@ -19,6 +19,7 @@ import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/npc_placement.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
+import 'package:ai_office/game/npc/npc_task.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
@@ -32,10 +33,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 /// Answers an `@employee command` chat message with that employee's reply.
+///
+/// [history] is the recent back-and-forth already had with this employee
+/// (oldest first, `role` is `'user'` or `'assistant'`), so a handler backed
+/// by an LLM can answer with multi-turn context instead of treating every
+/// command as a one-off.
 typedef NpcCommandHandler = Future<String> Function({
   required String employeeName,
   required String employeeRole,
   required String command,
+  required List<Map<String, String>> history,
 });
 
 /// The interactive office world and its camera configuration.
@@ -130,6 +137,17 @@ class OfficeGame extends FlameGame
   /// a signed-in session (e.g. tests) — commands are then ignored.
   final NpcCommandHandler? askEmployee;
   late List<ChatMessage> _chatMessages;
+
+  /// Structured command/response records per employee id, most recent
+  /// last — backs [tasksFor] (the computer popup's "작업 이력" list) and is
+  /// capped at [_taskHistoryLimit] entries per employee.
+  final Map<String, List<NpcTask>> _tasksByEmployee = {};
+  static const _taskHistoryLimit = 20;
+
+  /// How many past exchanges with an employee are sent as [askEmployee]'s
+  /// `history` so it can answer with multi-turn context.
+  static const _historyTurnLimit = 6;
+
   bool _isChatOpen = false;
 
   Floor _currentFloor = Floor.workspace;
@@ -299,6 +317,35 @@ class OfficeGame extends FlameGame
     return null;
   }
 
+  /// The structured command/response history for [employee], most recent
+  /// first — backs the computer popup's "작업 이력" list. Includes
+  /// in-flight (`pending`) and failed (`error`) entries, not just
+  /// successful replies like [lastReplyFrom].
+  List<NpcTask> tasksFor(AiEmployee employee) {
+    final tasks = _tasksByEmployee[employee.id] ?? const <NpcTask>[];
+    return List.unmodifiable(tasks.reversed);
+  }
+
+  /// The last [_historyTurnLimit] turns already exchanged with [employee],
+  /// oldest first, formatted for [NpcCommandHandler]'s `history` parameter.
+  List<Map<String, String>> _historyFor(AiEmployee employee) {
+    final turns = <Map<String, String>>[];
+    for (final message in _chatMessages) {
+      if (!message.isNpc && message.toName == employee.name) {
+        // Strip the leading `@employee` so history holds just the command
+        // text, matching what's passed as askEmployee's `command` argument.
+        final content = _parseMention(message.body)?.command ?? message.body;
+        turns.add({'role': 'user', 'content': content});
+      } else if (message.isNpc && message.senderName == employee.name) {
+        turns.add({'role': 'assistant', 'content': message.body});
+      }
+    }
+    if (turns.length <= _historyTurnLimit) {
+      return turns;
+    }
+    return turns.sublist(turns.length - _historyTurnLimit);
+  }
+
   /// Sends [body] as a space chat message: shows it locally right away,
   /// broadcasts it to other signed-in users, and reports it via
   /// [onChatMessageSent] for the host app to persist.
@@ -322,6 +369,10 @@ class OfficeGame extends FlameGame
     String? toUserId;
     String? toName;
     AiEmployee? employee;
+    // Captured before the current message is appended below, so it holds
+    // only *prior* turns — the command itself is passed separately to
+    // _dispatchNpcCommand and shouldn't also show up inside its own history.
+    List<Map<String, String>>? history;
     if (mention != null) {
       final remote = _remoteStateByName(mention.name);
       if (remote != null) {
@@ -334,6 +385,7 @@ class OfficeGame extends FlameGame
           // exchange, in ChatPanel's 귓속말 tab, same as a user whisper.
           toUserId = selfId;
           toName = employee.name;
+          history = _historyFor(employee);
         }
       }
     }
@@ -353,8 +405,11 @@ class OfficeGame extends FlameGame
     notifyListeners();
 
     if (employee != null && mention!.command.isNotEmpty) {
-      unawaited(
-          _dispatchNpcCommand(employee: employee, command: mention.command));
+      unawaited(_dispatchNpcCommand(
+        employee: employee,
+        command: mention.command,
+        history: history ?? const [],
+      ));
     }
   }
 
@@ -393,16 +448,35 @@ class OfficeGame extends FlameGame
     return null;
   }
 
-  /// Asks [employee] to respond to [command] via [askEmployee], then posts
-  /// the reply as a normal (non-whispered) chat message from that employee.
+  /// Asks [employee] to respond to [command] via [askEmployee] (retrying
+  /// once on failure), records the exchange as an [NpcTask], then posts the
+  /// reply as a normal (non-whispered) chat message from that employee.
   Future<void> _dispatchNpcCommand({
     required AiEmployee employee,
     required String command,
+    required List<Map<String, String>> history,
   }) async {
     final askEmployee = this.askEmployee;
+    final taskId = '${DateTime.now().microsecondsSinceEpoch}-task-${employee.id}';
+    _recordTask(NpcTask(
+      id: taskId,
+      employeeId: employee.id,
+      command: command,
+      status: NpcTaskStatus.pending,
+      createdAt: DateTime.now(),
+    ));
+
     String replyBody;
     if (askEmployee == null) {
       replyBody = 'AI 연동이 아직 설정되지 않았습니다. docs/PHASE6_AI_EMPLOYEES.md를 참고해주세요.';
+      _updateTask(
+        employee.id,
+        taskId,
+        (task) => task.copyWith(
+          status: NpcTaskStatus.error,
+          errorMessage: replyBody,
+        ),
+      );
     } else {
       // Flip to "작업 중" for the round trip so the NPC visibly looks busy,
       // then back to whatever it was before (or "오류" on failure) —
@@ -410,16 +484,53 @@ class OfficeGame extends FlameGame
       // every chat command and isn't a roster edit an admin made.
       final previousStatus = employee.status;
       _setEmployeeStatus(employee, NpcStatus.working);
-      try {
-        replyBody = await askEmployee(
-          employeeName: employee.name,
-          employeeRole: employee.role,
-          command: command,
-        );
+
+      // One automatic retry: a single dropped connection or transient
+      // OpenAI hiccup shouldn't immediately show the employee as errored.
+      const maxAttempts = 2;
+      Object? lastError;
+      String? result;
+      var attemptsUsed = 0;
+      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+        attemptsUsed = attempt;
+        try {
+          result = await askEmployee(
+            employeeName: employee.name,
+            employeeRole: employee.role,
+            command: command,
+            history: history,
+          );
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (lastError == null) {
+        replyBody = result!;
         _setEmployeeStatus(employee, previousStatus);
-      } catch (e) {
-        replyBody = '응답을 가져오지 못했습니다: $e';
+        _updateTask(
+          employee.id,
+          taskId,
+          (task) => task.copyWith(
+            status: NpcTaskStatus.success,
+            result: replyBody,
+            attempts: attemptsUsed,
+          ),
+        );
+      } else {
+        replyBody = '응답을 가져오지 못했습니다 (재시도 후에도 실패): $lastError';
         _setEmployeeStatus(employee, NpcStatus.error);
+        _updateTask(
+          employee.id,
+          taskId,
+          (task) => task.copyWith(
+            status: NpcTaskStatus.error,
+            errorMessage: '$lastError',
+            attempts: maxAttempts,
+          ),
+        );
       }
     }
 
@@ -440,6 +551,36 @@ class OfficeGame extends FlameGame
     multiplayer?.sendChat(reply);
     onChatMessageSent?.call(reply);
     notifyListeners();
+  }
+
+  /// Appends [task] to its employee's history, trimming to
+  /// [_taskHistoryLimit] entries.
+  void _recordTask(NpcTask task) {
+    final tasks = _tasksByEmployee.putIfAbsent(task.employeeId, () => []);
+    tasks.add(task);
+    if (tasks.length > _taskHistoryLimit) {
+      tasks.removeAt(0);
+    }
+  }
+
+  /// Replaces the task identified by [employeeId]/[taskId] with the result
+  /// of [update], if it's still present (it always should be — tasks are
+  /// only trimmed from the opposite end once far more than [_taskHistoryLimit]
+  /// commands have been sent to the same employee).
+  void _updateTask(
+    String employeeId,
+    String taskId,
+    NpcTask Function(NpcTask) update,
+  ) {
+    final tasks = _tasksByEmployee[employeeId];
+    if (tasks == null) {
+      return;
+    }
+    final index = tasks.indexWhere((task) => task.id == taskId);
+    if (index == -1) {
+      return;
+    }
+    tasks[index] = update(tasks[index]);
   }
 
   /// Applies edited roster data for one AI employee (name, role, status).

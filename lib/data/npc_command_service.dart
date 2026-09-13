@@ -13,6 +13,7 @@ class NpcCommandService {
     required String employeeName,
     required String employeeRole,
     required String command,
+    List<Map<String, String>> history = const [],
   }) async {
     final response = await _client.functions.invoke(
       'ask-employee',
@@ -20,6 +21,7 @@ class NpcCommandService {
         'employeeName': employeeName,
         'employeeRole': employeeRole,
         'command': command,
+        'history': history,
       },
     );
     final data = response.data;

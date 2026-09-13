@@ -98,11 +98,13 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
         required employeeName,
         required employeeRole,
         required command,
+        required history,
       }) =>
           _npcCommandService.ask(
         employeeName: employeeName,
         employeeRole: employeeRole,
         command: command,
+        history: history,
       ),
     );
 
