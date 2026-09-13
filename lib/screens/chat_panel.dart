@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 /// A company-wide chat panel, anchored to the bottom-right of the screen,
 /// split into two tabs: 공간 채팅 (public messages everyone sees) and
-/// 귓속말/AI (private messages — user whispers and AI employee command
-/// exchanges — visible only to the two parties involved). Messages are
-/// shared live via [OfficeGame.sendChatMessage] / the multiplayer channel.
+/// 귓속말 · AI (private messages — user whispers and AI employee command
+/// exchanges). The private tab is further split into per-partner rooms,
+/// KakaoTalk-style — one for each other user you've whispered with, and
+/// one for each AI employee you've sent a command to. Messages are shared
+/// live via [OfficeGame.sendChatMessage] / the multiplayer channel.
 class ChatPanel extends StatefulWidget {
   const ChatPanel({required this.game, super.key});
 
@@ -16,29 +18,84 @@ class ChatPanel extends StatefulWidget {
   State<ChatPanel> createState() => _ChatPanelState();
 }
 
+/// One private conversation, identified by [key] (`user:<id>` or
+/// `npc:<name>`) so a whisper thread and an AI employee thread never
+/// collide even if a username happened to match an employee's name.
+class _PrivateRoom {
+  _PrivateRoom({required this.key, required this.name, required this.isNpc});
+
+  final String key;
+  final String name;
+  final bool isNpc;
+  ChatMessage? lastMessage;
+}
+
 class _ChatPanelState extends State<ChatPanel> {
   final _controller = TextEditingController();
   final _publicScrollController = ScrollController();
-  final _privateScrollController = ScrollController();
+  final _roomScrollController = ScrollController();
   int _tabIndex = 0;
+  String? _selectedRoomKey;
+  String? _selectedRoomName;
 
   @override
   void dispose() {
     _controller.dispose();
     _publicScrollController.dispose();
-    _privateScrollController.dispose();
+    _roomScrollController.dispose();
     super.dispose();
   }
 
+  /// Which private room [message] belongs to, from the current user's
+  /// point of view — grouping by the *other* party regardless of which of
+  /// us sent which message in the exchange.
+  ({String key, String name, bool isNpc}) _roomOf(
+    ChatMessage message,
+    String selfUserId,
+  ) {
+    if (message.isNpc) {
+      return (key: 'npc:${message.senderName}', name: message.senderName, isNpc: true);
+    }
+    if (message.userId == selfUserId) {
+      if (message.toUserId == selfUserId) {
+        // My own command to an NPC (self-directed placeholder toUserId).
+        final name = message.toName ?? '?';
+        return (key: 'npc:$name', name: name, isNpc: true);
+      }
+      final name = message.toName ?? '?';
+      return (key: 'user:${message.toUserId}', name: name, isNpc: false);
+    }
+    return (key: 'user:${message.userId}', name: message.senderName, isNpc: false);
+  }
+
   void _send() {
-    widget.game.sendChatMessage(_controller.text);
+    var text = _controller.text;
+    final roomName = _selectedRoomName;
+    if (roomName != null && !text.trimLeft().startsWith('@')) {
+      text = '@$roomName $text';
+    }
+    widget.game.sendChatMessage(text);
     _controller.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final controller =
-          _tabIndex == 0 ? _publicScrollController : _privateScrollController;
+          _tabIndex == 0 ? _publicScrollController : _roomScrollController;
       if (controller.hasClients) {
         controller.jumpTo(controller.position.maxScrollExtent);
       }
+    });
+  }
+
+  void _openRoom(String key, String name) {
+    setState(() {
+      _selectedRoomKey = key;
+      _selectedRoomName = name;
+    });
+  }
+
+  void _backToRoomList() {
+    setState(() {
+      _selectedRoomKey = null;
+      _selectedRoomName = null;
     });
   }
 
@@ -53,6 +110,28 @@ class _ChatPanelState extends State<ChatPanel> {
             m.toUserId != null &&
             (m.toUserId == selfUserId || m.userId == selfUserId))
         .toList();
+
+    final rooms = <String, _PrivateRoom>{};
+    for (final message in privateMessages) {
+      final info = _roomOf(message, selfUserId);
+      final room = rooms.putIfAbsent(
+        info.key,
+        () => _PrivateRoom(key: info.key, name: info.name, isNpc: info.isNpc),
+      );
+      final last = room.lastMessage;
+      if (last == null || message.createdAt.isAfter(last.createdAt)) {
+        room.lastMessage = message;
+      }
+    }
+    final roomList = rooms.values.toList()
+      ..sort((a, b) =>
+          b.lastMessage!.createdAt.compareTo(a.lastMessage!.createdAt));
+
+    final selectedRoomMessages = _selectedRoomKey == null
+        ? const <ChatMessage>[]
+        : privateMessages
+            .where((m) => _roomOf(m, selfUserId).key == _selectedRoomKey)
+            .toList();
 
     return Positioned(
       bottom: 16,
@@ -70,36 +149,7 @@ class _ChatPanelState extends State<ChatPanel> {
           ),
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 8, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          _TabButton(
-                            label: '공간 채팅',
-                            selected: _tabIndex == 0,
-                            onTap: () => setState(() => _tabIndex = 0),
-                          ),
-                          const SizedBox(width: 6),
-                          _TabButton(
-                            label: '귓속말 · AI',
-                            selected: _tabIndex == 1,
-                            onTap: () => setState(() => _tabIndex = 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '닫기',
-                      onPressed: widget.game.closeChat,
-                      color: Colors.white70,
-                      icon: const Icon(Icons.close, size: 20),
-                    ),
-                  ],
-                ),
-              ),
+              _buildHeader(),
               const Divider(color: Colors.white24, height: 12),
               Expanded(
                 child: IndexedStack(
@@ -110,11 +160,16 @@ class _ChatPanelState extends State<ChatPanel> {
                       scrollController: _publicScrollController,
                       emptyText: '아직 메시지가 없습니다.',
                     ),
-                    _MessageList(
-                      messages: privateMessages,
-                      scrollController: _privateScrollController,
-                      emptyText: '귓속말이나 AI 직원과 나눈 대화가 없습니다.',
-                    ),
+                    _selectedRoomKey == null
+                        ? _RoomList(
+                            rooms: roomList,
+                            onTap: (room) => _openRoom(room.key, room.name),
+                          )
+                        : _MessageList(
+                            messages: selectedRoomMessages,
+                            scrollController: _roomScrollController,
+                            emptyText: '아직 나눈 대화가 없습니다.',
+                          ),
                   ],
                 ),
               ),
@@ -126,11 +181,13 @@ class _ChatPanelState extends State<ChatPanel> {
                       child: TextField(
                         controller: _controller,
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: '메시지 입력... (@이름으로 귓속말/AI 직원 명령)',
-                          hintStyle: TextStyle(color: Colors.white38),
+                        decoration: InputDecoration(
+                          hintText: _selectedRoomName != null
+                              ? '$_selectedRoomName에게 메시지 보내기...'
+                              : '메시지 입력... (@이름으로 귓속말/AI 직원 명령)',
+                          hintStyle: const TextStyle(color: Colors.white38),
                           isDense: true,
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
                         ),
                         onSubmitted: (_) => _send(),
                       ),
@@ -147,6 +204,71 @@ class _ChatPanelState extends State<ChatPanel> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    if (_tabIndex == 1 && _selectedRoomKey != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 8, 0),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: '목록으로',
+              onPressed: _backToRoomList,
+              color: Colors.white70,
+              icon: const Icon(Icons.arrow_back, size: 20),
+            ),
+            Expanded(
+              child: Text(
+                _selectedRoomName ?? '',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              tooltip: '닫기',
+              onPressed: widget.game.closeChat,
+              color: Colors.white70,
+              icon: const Icon(Icons.close, size: 20),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                _TabButton(
+                  label: '공간 채팅',
+                  selected: _tabIndex == 0,
+                  onTap: () => setState(() => _tabIndex = 0),
+                ),
+                const SizedBox(width: 6),
+                _TabButton(
+                  label: '귓속말 · AI',
+                  selected: _tabIndex == 1,
+                  onTap: () => setState(() => _tabIndex = 1),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '닫기',
+            onPressed: widget.game.closeChat,
+            color: Colors.white70,
+            icon: const Icon(Icons.close, size: 20),
+          ),
+        ],
       ),
     );
   }
@@ -179,6 +301,77 @@ class _TabButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _RoomList extends StatelessWidget {
+  const _RoomList({required this.rooms, required this.onTap});
+
+  final List<_PrivateRoom> rooms;
+  final void Function(_PrivateRoom room) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rooms.isEmpty) {
+      return const Center(
+        child: Text(
+          '귓속말이나 AI 직원과 나눈 대화가 없습니다.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white38),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: rooms.length,
+      separatorBuilder: (_, __) =>
+          const Divider(color: Colors.white12, height: 1),
+      itemBuilder: (context, index) {
+        final room = rooms[index];
+        final last = room.lastMessage!;
+        return ListTile(
+          onTap: () => onTap(room),
+          leading: CircleAvatar(
+            backgroundColor:
+                room.isNpc ? const Color(0xFF8BC34A) : const Color(0xFFCE93D8),
+            child: Text(
+              room.name.isNotEmpty ? room.name.substring(0, 1) : '?',
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  room.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (room.isNpc) ...[
+                const SizedBox(width: 4),
+                const Text(
+                  '· AI',
+                  style: TextStyle(color: Color(0xFF8BC34A), fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+          subtitle: Text(
+            last.body,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white54),
+          ),
+        );
+      },
     );
   }
 }
