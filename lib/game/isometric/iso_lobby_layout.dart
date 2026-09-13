@@ -21,6 +21,7 @@ class IsoLobbyPlacement {
 /// Collision and layered-art configuration for the first-floor lobby.
 abstract final class IsoLobbyLayout {
   static final Vector2 _worldSize = Vector2(960, 704);
+  static const _floorTileSize = 64.0;
 
   // Exterior cutouts and their wall faces follow the stepped floor artwork.
   // Fill the exterior as well as the face so a large move cannot land outside.
@@ -57,13 +58,13 @@ abstract final class IsoLobbyLayout {
     elevatorPosition: Vector2(480, 80),
   );
 
+  /// Tile-by-tile floor construction for the first floor.
+  ///
+  /// This intentionally uses the separate, named source tiles rather than a
+  /// single painted background. It keeps each zone editable as the cafe,
+  /// store, lobby, and outside areas are built out in later passes.
   static final List<IsoLobbyPlacement> placements = [
-    IsoLobbyPlacement(
-      assetPath: 'office_1f/isometric/lobby_ground.png',
-      worldFootPoint: Vector2(480, 704),
-      screenSize: Vector2(960, 704),
-      layerOffset: -100000,
-    ),
+    ..._floorPlacements(),
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/reception.png',
       worldFootPoint: Vector2(480, 288),
@@ -96,4 +97,104 @@ abstract final class IsoLobbyLayout {
       layerOffset: 100000,
     ),
   ];
+
+  static List<IsoLobbyPlacement> _floorPlacements() {
+    final tiles = <IsoLobbyPlacement>[];
+    for (var row = 0; row < 11; row++) {
+      for (var column = 0; column < 15; column++) {
+        final selection = _floorSelectionFor(column, row);
+        tiles.add(
+          IsoLobbyPlacement(
+            assetPath: 'office_1f/v3/floor/${selection.category}/'
+                '${selection.variant}.png',
+            worldFootPoint: Vector2(
+              column * _floorTileSize + _floorTileSize / 2,
+              row * _floorTileSize + _floorTileSize,
+            ),
+            screenSize: Vector2.all(_floorTileSize),
+            layerOffset: -100000,
+          ),
+        );
+      }
+    }
+    return tiles;
+  }
+
+  static ({String category, String variant}) _floorSelectionFor(
+    int column,
+    int row,
+  ) {
+    // The outdoor threshold at the lower edge establishes the entrance,
+    // shallow ponds, and the planted borders before furniture is added.
+    if (row == 10) {
+      if (column <= 2 || column >= 12) {
+        return (
+          category: 'shallow_water',
+          variant: column == 1 || column == 13 ? 'variation_a' : 'base',
+        );
+      }
+      if (column == 6 || column == 7 || column == 8) {
+        return (category: 'indoor_entrance', variant: 'base');
+      }
+      if (column == 3 || column == 11) {
+        return (category: 'planter_edge', variant: 'base');
+      }
+      return (category: 'pond_walkway', variant: 'base');
+    }
+
+    // The top band gives the lift and stair landing a colder stone finish.
+    if (row == 0) {
+      return (
+        category:
+            column >= 6 && column <= 8 ? 'elevator_front' : 'stair_landing',
+        variant: column == 6 || column == 8 ? 'edge' : 'base',
+      );
+    }
+    if (row <= 2 && column >= 6 && column <= 8) {
+      return (
+        category: 'elevator_front',
+        variant: row == 2 ? 'border_trim' : 'variation_a',
+      );
+    }
+
+    // Commercial zones: cafe left, store right, and a softer lounge below.
+    if (column <= 4 && row >= 4 && row <= 9) {
+      return (
+        category: 'cafe',
+        variant: (column + row).isEven ? 'base' : 'variation_a',
+      );
+    }
+    if (column >= 10 && row >= 4 && row <= 7) {
+      return (
+        category: 'store',
+        variant: (column + row).isEven ? 'base' : 'variation_b',
+      );
+    }
+    if (column >= 10 && row >= 8 && row <= 9) {
+      return (
+        category: 'lounge',
+        variant: (column + row).isEven ? 'base' : 'variation_a',
+      );
+    }
+
+    // A planted edge frames the middle without changing its walkable area.
+    if ((column == 5 || column == 9) && row >= 4 && row <= 8) {
+      return (
+        category: 'planter_edge',
+        variant: row == 4 || row == 8 ? 'transition' : 'border_trim',
+      );
+    }
+
+    // The central circulation path uses the warmer reception lobby treatment.
+    if (column >= 5 && column <= 9 && row >= 3 && row <= 5) {
+      return (
+        category: 'reception_lobby',
+        variant: (column + row).isEven ? 'base' : 'variation_a',
+      );
+    }
+    return (
+      category: 'main_lobby',
+      variant: (column + row).isEven ? 'base' : 'variation_a',
+    );
+  }
 }

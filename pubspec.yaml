@@ -26,6 +26,18 @@ flutter:
     - assets/images/objects/
     - assets/images/office_2f/floors/
     - assets/images/office_1f/isometric/
+    - assets/images/office_1f/v3/floor/cafe/
+    - assets/images/office_1f/v3/floor/elevator_front/
+    - assets/images/office_1f/v3/floor/indoor_entrance/
+    - assets/images/office_1f/v3/floor/lounge/
+    - assets/images/office_1f/v3/floor/main_lobby/
+    - assets/images/office_1f/v3/floor/outdoor_plaza/
+    - assets/images/office_1f/v3/floor/planter_edge/
+    - assets/images/office_1f/v3/floor/pond_walkway/
+    - assets/images/office_1f/v3/floor/reception_lobby/
+    - assets/images/office_1f/v3/floor/shallow_water/
+    - assets/images/office_1f/v3/floor/stair_landing/
+    - assets/images/office_1f/v3/floor/store/
     - assets/images/office_2f/walls/
     - assets/images/office_2f/glass/
     - assets/images/office_2f/partitions/

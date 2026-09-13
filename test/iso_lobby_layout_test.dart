@@ -59,7 +59,10 @@ void main() {
   test('the layered artwork includes the floor and foreground anchors', () {
     final paths = IsoLobbyLayout.placements.map((item) => item.assetPath);
 
-    expect(paths, contains('office_1f/isometric/lobby_ground.png'));
+    expect(paths, contains('office_1f/v3/floor/main_lobby/base.png'));
+    expect(paths, contains('office_1f/v3/floor/cafe/base.png'));
+    expect(paths, contains('office_1f/v3/floor/store/base.png'));
+    expect(paths, contains('office_1f/v3/floor/shallow_water/base.png'));
     expect(paths, contains('office_1f/isometric/reception.png'));
     expect(paths, contains('office_1f/isometric/foreground.png'));
   });
@@ -68,13 +71,19 @@ void main() {
     final worldSize = IsoLobbyLayout.floorLayout.worldSize;
     final placements = IsoLobbyLayout.placements;
     final ground = placements.firstWhere(
-      (item) => item.assetPath.endsWith('lobby_ground.png'),
+      (item) => item.assetPath.startsWith('office_1f/v3/floor/'),
     );
     final foreground = placements.firstWhere(
       (item) => item.assetPath.endsWith('foreground.png'),
     );
 
-    expect(ground.screenSize, worldSize);
+    expect(ground.screenSize, Vector2.all(64));
+    expect(
+      placements
+          .where((item) => item.assetPath.startsWith('office_1f/v3/floor/'))
+          .length,
+      165,
+    );
     expect(foreground.screenSize.x, worldSize.x);
     expect(foreground.screenSize.y, lessThanOrEqualTo(240));
 
