@@ -1,6 +1,24 @@
 # Codex 자율 개발 루프
 
-이 저장소는 대화를 이어 붙이지 않고, 매 바퀴마다 새 `codex exec` 세션을 시작하는 자율 개발 루프의 뼈대입니다. 이번 초기화에서는 실제 개발을 수행하지 않았습니다.
+이 저장소는 대화를 이어 붙이지 않고, 매 바퀴마다 새 `codex exec` 세션을 시작하는 자율 개발 루프와 Flutter Web 기반 AI 오피스 데모를 포함합니다.
+
+## Phase 1 가상 오피스
+
+Flutter Web + Flame으로 만든 단일 사용자 픽셀 오피스 데모입니다.
+
+- WASD 또는 방향키로 캐릭터 이동
+- 카메라 추적
+- 벽·책상 충돌
+- 바닥·벽·책상·의자·소파·화분 등 픽셀 오브젝트
+
+실행 방법:
+
+```powershell
+flutter pub get
+flutter run -d chrome
+```
+
+Chrome이 Flutter 기기 목록에 없으면 `flutter run -d edge`를 사용합니다.
 
 ## 구성 파일
 
@@ -9,8 +27,8 @@
 - `loop/PROMPT.md` — 각 새 Codex 세션이 읽는 지시서 틀
 - `loop/runner.ps1` — 예약 작업용 실행기; Codex 위치와 PATH를 명시적으로 설정
 - `loop/control.ps1` — 예약 작업 설치·켜기·끄기·상태 확인·삭제
-- `docs/DESIGN.md` — 초기 기획서 틀
-- `docs/STATUS.md` — 진행 상황과 다음 작업 틀
+- `docs/DESIGN.md` — Phase 1 기획서
+- `docs/STATUS.md` — 진행 상황과 다음 작업
 - `docs/feedback/INBOX.md` — 사용자 지시 수신함 틀
 - `logs/` — 날짜별 실행 로그 (Git 제외)
 - `loop/STOP` — 만들면 현재 바퀴가 끝난 뒤 정상 종료
