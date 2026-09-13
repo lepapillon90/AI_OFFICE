@@ -2,6 +2,7 @@ import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
+import 'package:ai_office/data/npc_command_service.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/auth/login_screen.dart';
 import 'package:ai_office/screens/office_screen.dart';
@@ -64,6 +65,7 @@ class _CompanyLoader extends StatefulWidget {
 class _CompanyLoaderState extends State<_CompanyLoader> {
   late final Future<_LoadedSession> _future = _load();
   final _chatRepository = ChatRepository(Supabase.instance.client);
+  final _npcCommandService = NpcCommandService(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -92,6 +94,16 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       onChatMessageSent: (message) => _chatRepository
           .sendMessage(companyId, message)
           .catchError((_) {}),
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+      }) =>
+          _npcCommandService.ask(
+        employeeName: employeeName,
+        employeeRole: employeeRole,
+        command: command,
+      ),
     );
 
     return _LoadedSession(

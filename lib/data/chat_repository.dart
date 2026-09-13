@@ -28,6 +28,9 @@ class ChatRepository {
       'user_id': message.userId,
       'sender_name': message.senderName,
       'body': message.body,
+      'to_user_id': message.toUserId,
+      'to_name': message.toName,
+      'is_npc': message.isNpc,
     });
   }
 }

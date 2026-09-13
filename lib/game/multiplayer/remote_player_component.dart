@@ -20,6 +20,7 @@ class RemotePlayerComponent extends SpriteComponent {
   late final NameTagComponent _nameTag;
 
   int get floorLevel => _state.floorLevel;
+  RemotePlayerState get state => _state;
 
   @override
   Future<void> onLoad() async {

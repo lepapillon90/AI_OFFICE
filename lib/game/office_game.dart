@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/data/remote_player_state.dart';
@@ -27,6 +29,13 @@ import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+/// Answers an `@employee command` chat message with that employee's reply.
+typedef NpcCommandHandler = Future<String> Function({
+  required String employeeName,
+  required String employeeRole,
+  required String command,
+});
+
 /// The interactive office world and its camera configuration.
 class OfficeGame extends FlameGame
     with HasKeyboardHandlerComponents, ScrollDetector, ChangeNotifier {
@@ -36,6 +45,7 @@ class OfficeGame extends FlameGame
     MultiplayerChannel? multiplayer,
     List<ChatMessage>? initialChatMessages,
     void Function(ChatMessage)? onChatMessageSent,
+    NpcCommandHandler? askEmployee,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
@@ -43,6 +53,7 @@ class OfficeGame extends FlameGame
           multiplayer: multiplayer,
           initialChatMessages: initialChatMessages,
           onChatMessageSent: onChatMessageSent,
+          askEmployee: askEmployee,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -55,6 +66,7 @@ class OfficeGame extends FlameGame
     this.multiplayer,
     List<ChatMessage>? initialChatMessages,
     this.onChatMessageSent,
+    this.askEmployee,
   }) {
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
@@ -105,6 +117,11 @@ class OfficeGame extends FlameGame
   /// Called after [sendChatMessage] broadcasts a message, so the host app
   /// can persist it (e.g. to Supabase) for chat history.
   final void Function(ChatMessage)? onChatMessageSent;
+
+  /// Answers an `@employee command` chat message with that AI employee's
+  /// reply (e.g. via a Supabase Edge Function calling an LLM). Null outside
+  /// a signed-in session (e.g. tests) — commands are then ignored.
+  final NpcCommandHandler? askEmployee;
   late List<ChatMessage> _chatMessages;
   bool _isChatOpen = false;
 
@@ -219,6 +236,11 @@ class OfficeGame extends FlameGame
   /// The company's shared space chat, oldest first.
   List<ChatMessage> get chatMessages => List.unmodifiable(_chatMessages);
 
+  /// This session's own multiplayer user id, or `'local'` outside a
+  /// signed-in session — used by [ChatPanel] to tell whispers meant for
+  /// this user apart from ones meant for someone else.
+  String get selfUserId => multiplayer?.userId ?? 'local';
+
   /// Opens the space chat panel, pausing player movement while typing.
   void openChat() {
     if (_isChatOpen) {
@@ -242,11 +264,31 @@ class OfficeGame extends FlameGame
   /// Sends [body] as a space chat message: shows it locally right away,
   /// broadcasts it to other signed-in users, and reports it via
   /// [onChatMessageSent] for the host app to persist.
+  ///
+  /// A leading `@name` addresses the message: `@employee 오늘 할 일 정리해줘`
+  /// sends a command to that AI employee (its reply is posted as a follow-up
+  /// message once [askEmployee] resolves), while `@username ...` whispers —
+  /// only the sender and that user see it in [ChatPanel].
   void sendChatMessage(String body) {
     final trimmed = body.trim();
     if (trimmed.isEmpty) {
       return;
     }
+
+    final mention = _parseMention(trimmed);
+    String? toUserId;
+    String? toName;
+    AiEmployee? employee;
+    if (mention != null) {
+      final remote = _remoteStateByName(mention.name);
+      if (remote != null) {
+        toUserId = remote.userId;
+        toName = remote.name;
+      } else {
+        employee = _employeeByName(mention.name);
+      }
+    }
+
     final multiplayer = this.multiplayer;
     final message = ChatMessage(
       id: '${DateTime.now().microsecondsSinceEpoch}-${multiplayer?.userId ?? 'local'}',
@@ -254,10 +296,81 @@ class OfficeGame extends FlameGame
       senderName: player.profile.name,
       body: trimmed,
       createdAt: DateTime.now(),
+      toUserId: toUserId,
+      toName: toName,
     );
     _chatMessages = [..._chatMessages, message];
     multiplayer?.sendChat(message);
     onChatMessageSent?.call(message);
+    notifyListeners();
+
+    if (employee != null && mention!.command.isNotEmpty) {
+      unawaited(_dispatchNpcCommand(employee: employee, command: mention.command));
+    }
+  }
+
+  /// A leading `@name`, split from the rest of the message. `command` is
+  /// empty when there's nothing after the mention (e.g. just `@하나`).
+  ({String name, String command})? _parseMention(String body) {
+    if (!body.startsWith('@')) {
+      return null;
+    }
+    final spaceIndex = body.indexOf(' ');
+    final name =
+        spaceIndex == -1 ? body.substring(1) : body.substring(1, spaceIndex);
+    if (name.isEmpty) {
+      return null;
+    }
+    final command =
+        spaceIndex == -1 ? '' : body.substring(spaceIndex + 1).trim();
+    return (name: name, command: command);
+  }
+
+  AiEmployee? _employeeByName(String name) {
+    for (final employee in _employees) {
+      if (employee.name.toLowerCase() == name.toLowerCase()) {
+        return employee;
+      }
+    }
+    return null;
+  }
+
+  RemotePlayerState? _remoteStateByName(String name) {
+    for (final component in _remotePlayers.values) {
+      if (component.state.name.toLowerCase() == name.toLowerCase()) {
+        return component.state;
+      }
+    }
+    return null;
+  }
+
+  /// Asks [employee] to respond to [command] via [askEmployee], then posts
+  /// the reply as a normal (non-whispered) chat message from that employee.
+  Future<void> _dispatchNpcCommand({
+    required AiEmployee employee,
+    required String command,
+  }) async {
+    final askEmployee = this.askEmployee;
+    final replyBody = askEmployee == null
+        ? 'AI 연동이 아직 설정되지 않았습니다. docs/PHASE6_AI_EMPLOYEES.md를 참고해주세요.'
+        : await askEmployee(
+            employeeName: employee.name,
+            employeeRole: employee.role,
+            command: command,
+          ).catchError((Object e) => '응답을 가져오지 못했습니다: $e');
+
+    final multiplayer = this.multiplayer;
+    final reply = ChatMessage(
+      id: '${DateTime.now().microsecondsSinceEpoch}-npc-${employee.id}',
+      userId: multiplayer?.userId ?? 'local',
+      senderName: employee.name,
+      body: replyBody,
+      createdAt: DateTime.now(),
+      isNpc: true,
+    );
+    _chatMessages = [..._chatMessages, reply];
+    multiplayer?.sendChat(reply);
+    onChatMessageSent?.call(reply);
     notifyListeners();
   }
 

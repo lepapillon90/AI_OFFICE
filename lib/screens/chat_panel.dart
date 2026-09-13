@@ -36,7 +36,13 @@ class _ChatPanelState extends State<ChatPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = widget.game.chatMessages;
+    final selfUserId = widget.game.selfUserId;
+    final messages = widget.game.chatMessages.where((message) {
+      final toUserId = message.toUserId;
+      return toUserId == null ||
+          toUserId == selfUserId ||
+          message.userId == selfUserId;
+    }).toList();
     return Positioned(
       bottom: 16,
       right: 16,
@@ -91,22 +97,40 @@ class _ChatPanelState extends State<ChatPanel> {
                         itemCount: messages.length,
                         itemBuilder: (context, index) {
                           final message = messages[index];
+                          final isWhisper = message.toUserId != null;
+                          final nameColor = message.isNpc
+                              ? const Color(0xFF8BC34A)
+                              : isWhisper
+                                  ? const Color(0xFFCE93D8)
+                                  : const Color(0xFF5DE0E6);
+                          final label = message.isNpc
+                              ? '${message.senderName} · AI'
+                              : isWhisper
+                                  ? '${message.senderName} → ${message.toName} (귓속말)'
+                                  : message.senderName;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  message.senderName,
-                                  style: const TextStyle(
-                                    color: Color(0xFF5DE0E6),
+                                  label,
+                                  style: TextStyle(
+                                    color: nameColor,
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
+                                    fontStyle: isWhisper
+                                        ? FontStyle.italic
+                                        : FontStyle.normal,
                                   ),
                                 ),
                                 Text(
                                   message.body,
-                                  style: const TextStyle(color: Colors.white),
+                                  style: TextStyle(
+                                    color: isWhisper
+                                        ? Colors.white70
+                                        : Colors.white,
+                                  ),
                                 ),
                               ],
                             ),
@@ -123,7 +147,7 @@ class _ChatPanelState extends State<ChatPanel> {
                         controller: _controller,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                          hintText: '메시지 입력...',
+                          hintText: '메시지 입력... (@이름으로 귓속말/AI 직원 명령)',
                           hintStyle: TextStyle(color: Colors.white38),
                           isDense: true,
                           border: OutlineInputBorder(),
