@@ -17,6 +17,7 @@ import 'package:ai_office/game/map/office_map.dart';
 import 'package:ai_office/game/multiplayer/remote_player_component.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
+import 'package:ai_office/game/npc/npc_placement.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
@@ -82,11 +83,15 @@ class OfficeGame extends FlameGame
       onTap: openProfileCard,
     )..priority = _playerPriority;
     final npcs = _buildNpcs()..forEach((npc) => npc.priority = _npcPriority);
+    final projectRoomNpcs = _buildFloorNpcs(Floor.projectRoom)
+      ..forEach((npc) => npc.priority = _npcPriority);
+    final executiveNpcs = _buildFloorNpcs(Floor.executive)
+      ..forEach((npc) => npc.priority = _npcPriority);
     _floorComponents = {
       Floor.lobby: IsoLobbyScene().createComponents(),
       Floor.workspace: [OfficeMap(), ...computers, ...npcs],
-      Floor.projectRoom: [ProjectRoomMap()],
-      Floor.executive: [ExecutiveMap()],
+      Floor.projectRoom: [ProjectRoomMap(), ...projectRoomNpcs],
+      Floor.executive: [ExecutiveMap(), ...executiveNpcs],
     };
     _onPlayerMoved(player.position);
   }
@@ -736,12 +741,37 @@ class OfficeGame extends FlameGame
         .toList();
   }
 
+  /// NPCs for the 2층 desk grid — only employees whose `workstationId`
+  /// matches one of those desks. Employees seated elsewhere (see
+  /// [_buildFloorNpcs]) are skipped rather than crashing on a missing
+  /// lookup.
   List<NpcComponent> _buildNpcs() {
     final workstationsById = {for (final w in Workstation.all) w.id: w};
-    return _employees.map((employee) {
+    return _employees
+        .where(
+            (employee) => workstationsById.containsKey(employee.workstationId))
+        .map((employee) {
       final npc = NpcComponent(
         employee: employee,
         position: workstationsById[employee.workstationId]!.seatPosition,
+      );
+      _npcsByWorkstation[employee.workstationId] = npc;
+      return npc;
+    }).toList();
+  }
+
+  /// NPCs seated on [floor] per [NpcPlacement] — 3층/4층's own furniture
+  /// layout, distinct from the repeating 2층 desk grid [_buildNpcs] uses.
+  List<NpcComponent> _buildFloorNpcs(Floor floor) {
+    final placementsById = {
+      for (final p in NpcPlacement.forFloor(floor)) p.id: p,
+    };
+    return _employees
+        .where((employee) => placementsById.containsKey(employee.workstationId))
+        .map((employee) {
+      final npc = NpcComponent(
+        employee: employee,
+        position: placementsById[employee.workstationId]!.position,
       );
       _npcsByWorkstation[employee.workstationId] = npc;
       return npc;

@@ -42,4 +42,30 @@ final List<AiEmployee> sampleEmployees = [
     workstationId: Workstation.all[3].id,
     status: NpcStatus.idle,
   ),
+  // 3층 프로젝트룸 — 공용 프로젝트 테이블 두 자리.
+  AiEmployee(
+    id: 'ai-5',
+    name: '도윤',
+    role: 'PM/기획자',
+    provider: 'openai',
+    workstationId: 'project-desk-1',
+    status: NpcStatus.idle,
+  ),
+  AiEmployee(
+    id: 'ai-6',
+    name: '하윤',
+    role: '프로덕트 디자이너',
+    provider: 'openai',
+    workstationId: 'project-desk-2',
+    status: NpcStatus.idle,
+  ),
+  // 4층 대표실.
+  AiEmployee(
+    id: 'ai-7',
+    name: '강민',
+    role: '대표이사',
+    provider: 'openai',
+    workstationId: 'executive-desk',
+    status: NpcStatus.idle,
+  ),
 ];
