@@ -22,22 +22,25 @@ notify pgrst, 'reload schema';
 
 ## 필요한 설정 — Edge Function 배포 (AI 직원 응답)
 
-AI 직원이 실제로 응답하려면 Anthropic API를 호출하는 서버리스 함수가 필요합니다. **API 키를 앱(클라이언트) 코드에 절대 넣으면 안 되므로** Supabase Edge Function으로 프록시합니다. 코드는 이미 `supabase/functions/ask-employee/index.ts`에 준비되어 있습니다.
+AI 직원이 실제로 응답하려면 OpenAI API를 호출하는 서버리스 함수가 필요합니다 (`gpt-4o-mini` 모델 사용). **API 키를 앱(클라이언트) 코드에 절대 넣으면 안 되므로** Supabase Edge Function으로 프록시합니다. 코드는 이미 `supabase/functions/ask-employee/index.ts`에 준비되어 있습니다.
+
+> 처음엔 Anthropic API로 구현했지만, 사용자 요청으로 **OpenAI API**를 먼저 연동했습니다. 나중에 Anthropic으로 바꾸거나 두 제공자를 함께 쓰려면 이 함수를 다시 수정하면 됩니다. `AiEmployee.provider` 필드에 `'anthropic'` 값이 남아있긴 하지만, 현재 이 필드는 어떤 API를 호출할지 실제로 분기하는 데 쓰이지는 않습니다 — 모든 명령이 이 함수(현재는 OpenAI)로만 전달됩니다.
 
 ### 방법 A: Supabase 대시보드에서 배포 (CLI 설치 없이 가능)
 
 1. [Supabase 대시보드](https://supabase.com/dashboard) → 프로젝트 선택 → 좌측 메뉴 **Edge Functions**
-2. **Deploy a new function** → 이름을 정확히 `ask-employee`로 입력
-3. 코드 편집기에 `supabase/functions/ask-employee/index.ts` 파일 내용을 그대로 붙여넣고 배포
-4. **Project Settings → Edge Functions → Secrets** (또는 Edge Functions 페이지의 Secrets 탭)에서 새 시크릿 추가:
-   - Key: `ANTHROPIC_API_KEY`
-   - Value: 본인의 Anthropic API 키 ([console.anthropic.com](https://console.anthropic.com)에서 발급) — **이 값은 본인이 직접 입력해주세요**, 저는 API 키를 대신 입력해드릴 수 없습니다.
+2. **Deploy a new function → Via Editor** → 이름을 정확히 `ask-employee`로 입력
+3. 코드 편집기 내용을 전부 지우고 `supabase/functions/ask-employee/index.ts` 파일 내용을 그대로 붙여넣고 배포
+4. **Edge Functions → Secrets** (또는 Project Settings → Edge Functions)에서 새 시크릿 추가:
+   - Key: `OPENAI_API_KEY`
+   - Value: 본인의 OpenAI API 키 ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)에서 발급) — **이 값은 본인이 직접 입력해주세요**, 저는 API 키를 대신 입력해드릴 수 없습니다.
+5. OpenAI 계정에 결제 수단/크레딧이 등록되어 있어야 실제 응답이 옵니다 ([platform.openai.com/settings/organization/billing](https://platform.openai.com/settings/organization/billing)).
 
 ### 방법 B: Supabase CLI로 배포
 
 ```bash
 supabase functions deploy ask-employee
-supabase secrets set ANTHROPIC_API_KEY=본인의_키
+supabase secrets set OPENAI_API_KEY=본인의_키
 ```
 
 ## 앱 동작
