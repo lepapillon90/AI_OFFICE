@@ -30,14 +30,16 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
     _direction = Vector2(
-      _axis(keysPressed, LogicalKeyboardKey.keyD,
-              LogicalKeyboardKey.arrowRight) -
-          _axis(keysPressed, LogicalKeyboardKey.keyA,
-              LogicalKeyboardKey.arrowLeft),
-      _axis(keysPressed, LogicalKeyboardKey.keyS,
-              LogicalKeyboardKey.arrowDown) -
-          _axis(
-              keysPressed, LogicalKeyboardKey.keyW, LogicalKeyboardKey.arrowUp),
+      _axis(
+        keysPressed,
+        [LogicalKeyboardKey.keyD, LogicalKeyboardKey.arrowRight],
+        [LogicalKeyboardKey.keyA, LogicalKeyboardKey.arrowLeft],
+      ),
+      _axis(
+        keysPressed,
+        [LogicalKeyboardKey.keyS, LogicalKeyboardKey.arrowDown],
+        [LogicalKeyboardKey.keyW, LogicalKeyboardKey.arrowUp],
+      ),
     );
     _selectDirectionFrame();
     return true;
@@ -57,12 +59,12 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
   /// Moves horizontally then vertically, retaining each axis only if walkable.
   Vector2 tryMove(Vector2 delta) {
     final horizontal = position.clone()..x += delta.x;
-    if (_canOccupy(horizontal)) {
+    if (_canTraverse(position, horizontal)) {
       position.x = horizontal.x;
     }
 
     final vertical = position.clone()..y += delta.y;
-    if (_canOccupy(vertical)) {
+    if (_canTraverse(position, vertical)) {
       position.y = vertical.y;
     }
     return position;
@@ -70,11 +72,26 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
 
   double _axis(
     Set<LogicalKeyboardKey> keysPressed,
-    LogicalKeyboardKey positive,
-    LogicalKeyboardKey negative,
+    List<LogicalKeyboardKey> positiveKeys,
+    List<LogicalKeyboardKey> negativeKeys,
   ) =>
-      (keysPressed.contains(positive) ? 1 : 0) -
-      (keysPressed.contains(negative) ? 1 : 0);
+      (positiveKeys.any(keysPressed.contains) ? 1 : 0) -
+      (negativeKeys.any(keysPressed.contains) ? 1 : 0);
+
+  bool _canTraverse(Vector2 start, Vector2 end) {
+    if (!_canOccupy(end)) {
+      return false;
+    }
+
+    final sweptHitbox = Rect.fromLTRB(
+      (start.x < end.x ? start.x : end.x) - _hitboxSize.x / 2,
+      (start.y < end.y ? start.y : end.y) - _hitboxSize.y / 2,
+      (start.x > end.x ? start.x : end.x) + _hitboxSize.x / 2,
+      (start.y > end.y ? start.y : end.y) + _hitboxSize.y / 2,
+    );
+    return OfficeLayout.blockers
+        .every((blocker) => !sweptHitbox.overlaps(blocker));
+  }
 
   bool _canOccupy(Vector2 candidate) {
     final hitbox = Rect.fromCenter(
