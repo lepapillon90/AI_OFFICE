@@ -4,13 +4,18 @@ import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
+import 'package:flame/events.dart';
 import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
-import 'package:flame/input.dart';
 
 /// The interactive office world and its camera configuration.
-class OfficeGame extends FlameGame with HasKeyboardHandlerComponents {
+class OfficeGame extends FlameGame
+    with HasKeyboardHandlerComponents, ScrollDetector {
   late final OfficePlayer player;
+
+  static const _minZoom = 0.5;
+  static const _maxZoom = 2.5;
+  static const _zoomStep = 0.1;
 
   @override
   Future<void> onLoad() async {
@@ -28,6 +33,13 @@ class OfficeGame extends FlameGame with HasKeyboardHandlerComponents {
       considerViewport: true,
     );
     camera.follow(player, snap: true);
+  }
+
+  @override
+  void onScroll(PointerScrollInfo info) {
+    final direction = info.scrollDelta.global.y.sign;
+    final zoom = camera.viewfinder.zoom - direction * _zoomStep;
+    camera.viewfinder.zoom = zoom.clamp(_minZoom, _maxZoom);
   }
 
   List<NpcComponent> _buildNpcs() {
