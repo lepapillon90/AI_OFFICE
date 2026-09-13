@@ -18,20 +18,32 @@ void main() {
     expect(paths, contains('office_1f/isometric/foreground.png'));
   });
 
-  test('props fit the lobby composition and all foot points stay in bounds', () {
+  test('layers and props fit the lobby composition', () {
     final worldSize = IsoLobbyLayout.floorLayout.worldSize;
+    final placements = IsoLobbyLayout.placements;
+    final ground = placements.firstWhere(
+      (item) => item.assetPath.endsWith('lobby_ground.png'),
+    );
+    final foreground = placements.firstWhere(
+      (item) => item.assetPath.endsWith('foreground.png'),
+    );
 
-    for (final placement in IsoLobbyLayout.placements) {
-      if (placement.assetPath.endsWith('lobby_ground.png') ||
-          placement.assetPath.endsWith('foreground.png')) {
-        continue;
-      }
+    expect(ground.screenSize, worldSize);
+    expect(foreground.screenSize.x, worldSize.x);
+    expect(foreground.screenSize.y, lessThanOrEqualTo(240));
 
+    const propNames = ['reception', 'cafe', 'store', 'lounge', 'planters'];
+    for (final name in propNames) {
+      final placement = placements.firstWhere(
+        (item) => item.assetPath.endsWith('$name.png'),
+      );
+
+      expect(placement.screenSize.x, placement.screenSize.y);
       expect(placement.screenSize.x, lessThanOrEqualTo(300));
       expect(placement.screenSize.y, lessThanOrEqualTo(300));
     }
 
-    for (final placement in IsoLobbyLayout.placements) {
+    for (final placement in placements) {
       expect(placement.worldFootPoint.x, inInclusiveRange(0, worldSize.x));
       expect(placement.worldFootPoint.y, inInclusiveRange(0, worldSize.y));
     }

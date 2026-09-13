@@ -37,7 +37,7 @@ abstract final class IsoLobbyLayout {
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/lobby_ground.png',
       worldFootPoint: Vector2(480, 704),
-      screenSize: Vector2(960, 960),
+      screenSize: Vector2(960, 704),
       layerOffset: -100000,
     ),
     IsoLobbyPlacement(
@@ -68,7 +68,7 @@ abstract final class IsoLobbyLayout {
     IsoLobbyPlacement(
       assetPath: 'office_1f/isometric/foreground.png',
       worldFootPoint: Vector2(480, 704),
-      screenSize: Vector2(960, 960),
+      screenSize: Vector2(960, 240),
       layerOffset: 100000,
     ),
   ];
