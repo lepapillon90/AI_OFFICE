@@ -211,6 +211,10 @@ class _ChatPanelState extends State<ChatPanel> {
                     Expanded(
                       child: TextField(
                         controller: _controller,
+                        // Safe now that OfficeScreen reclaims game focus
+                        // whenever no overlay is open — this only steals
+                        // focus for as long as the panel is actually shown.
+                        autofocus: true,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           hintText: _selectedRoomName != null
