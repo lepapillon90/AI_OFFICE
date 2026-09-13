@@ -3,6 +3,7 @@ import 'package:ai_office/game/floors/floor_layout.dart';
 import 'package:ai_office/game/isometric/iso_lobby_layout.dart';
 import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
 import 'package:ai_office/game/isometric/iso_projection.dart';
+import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/office_screen.dart';
@@ -21,6 +22,17 @@ void main() {
       FloorLayouts.lobby.elevatorPosition,
       IsoLobbyLayout.floorLayout.elevatorPosition,
     );
+  });
+
+  test('lobby elevator arrival is walkable for the player hitbox', () {
+    final arrival = FloorLayouts.lobby.arrivalPosition;
+    final hitbox = Rect.fromCenter(
+      center: Offset(arrival.x, arrival.y),
+      width: OfficeLayout.characterSize.x,
+      height: OfficeLayout.characterSize.y,
+    );
+
+    expect(FloorLayouts.lobby.blockers, isNot(contains(predicate((Rect blocker) => blocker.overlaps(hitbox)))));
   });
 
   test('starts on the workspace floor', () {
@@ -51,7 +63,7 @@ void main() {
     await tester.pump();
 
     expect(game.currentFloor, Floor.lobby);
-    expect(game.player.position, Vector2(480, 192));
+    expect(game.player.position, Vector2(480, 144));
     expect(game.elevator.position, FloorLayouts.lobby.elevatorPosition);
     expect(game.isElevatorNearby, isTrue);
     expect(game.isComputerNearby, isFalse);

@@ -30,7 +30,7 @@ abstract final class IsoLobbyLayout {
       const Rect.fromLTWH(96, 320, 240, 224),
       const Rect.fromLTWH(624, 320, 240, 192),
     ],
-    elevatorPosition: Vector2(480, 128),
+    elevatorPosition: Vector2(480, 80),
   );
 
   static final List<IsoLobbyPlacement> placements = [
