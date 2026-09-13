@@ -1,3 +1,4 @@
+import 'package:ai_office/game/exterior_backdrop.dart';
 import 'package:ai_office/game/floors/executive_map.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/floors/floor_layout.dart';
@@ -188,6 +189,7 @@ class OfficeGame extends FlameGame
   Future<void> onLoad() async {
     await super.onLoad();
 
+    camera.backdrop = ExteriorBackdrop();
     await world.addAll(
       [elevator, player, ..._floorComponents[_currentFloor]!],
     );
