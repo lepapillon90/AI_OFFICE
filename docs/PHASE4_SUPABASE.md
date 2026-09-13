@@ -131,6 +131,98 @@ notify pgrst, 'reload schema';
 
 이 SQL 전체는 몇 번을 다시 실행해도 안전합니다(정책을 먼저 지우고 다시 만듭니다). "policy already exists" 같은 에러가 나면 옛날 버전의 스크립트를 실행하신 것이니, 위 최신 SQL 전체를 그대로 다시 실행하시면 됩니다.
 
+## 인사관리자 초대 (추가 SQL)
+
+"직원 정보 관리" 패널에서 대표/인사관리자가 아이디로 다른 사람을 초대할 수 있습니다. 아래 SQL을 위 스키마에 이어서 실행해주세요 (역시 몇 번을 다시 실행해도 안전합니다).
+
+```sql
+create table if not exists invites (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references companies(id) on delete cascade,
+  email text not null,
+  role text not null default 'member' check (role in ('hr_manager', 'member')),
+  invited_by uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted')),
+  created_at timestamptz not null default now()
+);
+
+alter table invites enable row level security;
+
+drop policy if exists "managers_select_invites" on invites;
+drop policy if exists "managers_insert_invites" on invites;
+drop policy if exists "managers_delete_invites" on invites;
+drop policy if exists "invitee_select_own_invites" on invites;
+drop policy if exists "invitee_update_own_invites" on invites;
+drop policy if exists "invitee_join_via_invite" on company_members;
+
+-- Only the inviting company's owner/hr_manager can see, create, or
+-- withdraw invites for that company.
+create policy "managers_select_invites" on invites
+  for select using (
+    exists (
+      select 1 from company_members m
+      where m.company_id = invites.company_id
+        and m.user_id = auth.uid()
+        and m.role in ('owner', 'hr_manager')
+    )
+  );
+create policy "managers_insert_invites" on invites
+  for insert with check (
+    invited_by = auth.uid()
+    and exists (
+      select 1 from company_members m
+      where m.company_id = invites.company_id
+        and m.user_id = auth.uid()
+        and m.role in ('owner', 'hr_manager')
+    )
+  );
+create policy "managers_delete_invites" on invites
+  for delete using (
+    exists (
+      select 1 from company_members m
+      where m.company_id = invites.company_id
+        and m.user_id = auth.uid()
+        and m.role in ('owner', 'hr_manager')
+    )
+  );
+
+-- The invited person (matched by their own login email, before they have
+-- any company membership) can see and accept their own pending invite.
+create policy "invitee_select_own_invites" on invites
+  for select using (
+    lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+create policy "invitee_update_own_invites" on invites
+  for update using (
+    lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  ) with check (
+    lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+
+-- Lets the invited person insert their OWN company_members row once, but
+-- only when a matching pending invite exists — this is what turns
+-- "accepting an invite" into actually joining the company. Coexists with
+-- "owner_manage_members" (Postgres OR's matching policies together).
+create policy "invitee_join_via_invite" on company_members
+  for insert with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from invites i
+      where i.company_id = company_members.company_id
+        and i.status = 'pending'
+        and lower(i.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+    )
+  );
+
+notify pgrst, 'reload schema';
+```
+
+### 동작 방식
+
+1. 대표/인사관리자가 패널의 "구성원 초대"에서 아이디 + 역할(인사관리자/일반 직원)을 입력하면 `invites` 테이블에 `pending` 행이 생성됨 (실제 알림/메일은 보내지 않음 — 초대받은 사람에게 아이디/비밀번호를 직접 알려줘야 함)
+2. 초대받은 아이디로 회원가입하거나 로그인하면 `CompanyRepository.ensureCompany()`가 (1) 본인 소유 회사 → (2) 이미 속한 회사 → (3) 자신의 이메일로 온 대기 중 초대 순으로 확인, 일치하는 초대가 있으면 그 회사에 지정된 역할로 합류하고 초대를 `accepted`로 표시
+3. 일치하는 초대가 없으면 기존과 동일하게 새 회사를 만듦 (1인 1회사 기본 동작 유지)
+
 ## 인증
 
 Authentication → Providers → Email이 켜져 있어야 합니다 (기본값).
@@ -153,12 +245,11 @@ Authentication → Providers → Email이 켜져 있어야 합니다 (기본값)
 ## 역할(role)
 
 - `owner`(대표): 회사를 만든 사람. 자동 부여.
-- `hr_manager`(인사관리자): 나중에 대표가 초대할 수 있는 역할 (초대 UI는 아직 없음 — `company_members`에 직접 행을 추가해야 함).
-- `member`(일반 직원): 로스터 조회/수정 불가.
+- `hr_manager`(인사관리자): 대표/인사관리자가 "구성원 초대"로 초대할 수 있는 역할.
+- `member`(일반 직원): 로스터 조회/수정 불가, 초대는 가능.
 
 ## 이연된 범위
 
 - 오피스 레이아웃(층별 배치) 저장은 이번 범위에 포함하지 않음 — 현재는 고정 레이아웃 그대로 사용
 - 플레이어 프로필(이름/직책/상태) 영속화는 이번 범위에 포함하지 않음 — 세션 내에서만 유지
-- 대표가 인사관리자를 초대하는 UI는 아직 없음 (DB 구조만 준비됨)
-- 멀티유저/회사원 초대는 Phase 5(멀티플레이) 이후 범위
+- 초대는 인앱 알림/메일 발송 없이 아이디만 등록함 — 초대받은 사람에게 아이디/비밀번호를 별도로 전달해야 함

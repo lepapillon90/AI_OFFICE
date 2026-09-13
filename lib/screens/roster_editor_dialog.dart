@@ -1,3 +1,7 @@
+import 'package:ai_office/data/company_repository.dart';
+import 'package:ai_office/data/company_role.dart';
+import 'package:ai_office/data/pending_invite.dart';
+import 'package:ai_office/data/username_auth.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/office_game.dart';
@@ -5,15 +9,24 @@ import 'package:ai_office/game/player/player_status.dart';
 import 'package:flutter/material.dart';
 
 /// Lets an owner or HR manager edit the player's and each AI employee's
-/// name, role, and status badge. Not yet gated by real authentication —
-/// that arrives with the Phase 4 Supabase auth/roles work.
+/// name, role, and status badge, and (when [companyId]/[repository] are
+/// provided, i.e. behind real Supabase auth) invite new members.
 class RosterEditorDialog extends StatelessWidget {
-  const RosterEditorDialog({required this.game, super.key});
+  const RosterEditorDialog({
+    required this.game,
+    this.companyId,
+    this.repository,
+    super.key,
+  });
 
   final OfficeGame game;
+  final String? companyId;
+  final CompanyRepository? repository;
 
   @override
   Widget build(BuildContext context) {
+    final companyId = this.companyId;
+    final repository = this.repository;
     return AlertDialog(
       title: const Text('직원 정보 관리'),
       content: SizedBox(
@@ -29,6 +42,10 @@ class RosterEditorDialog extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _EmployeeEditor(game: game, employeeId: employee.id),
                 ),
+              if (companyId != null && repository != null) ...[
+                const Divider(height: 32),
+                _InviteSection(companyId: companyId, repository: repository),
+              ],
             ],
           ),
         ),
@@ -179,6 +196,149 @@ class _EmployeeEditorState extends State<_EmployeeEditor> {
               return;
             }
             widget.game.updateEmployee(employee.copyWith(status: status));
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// Lets the current manager invite a username to join the company, and
+/// shows/withdraws invites that haven't been accepted yet.
+class _InviteSection extends StatefulWidget {
+  const _InviteSection({required this.companyId, required this.repository});
+
+  final String companyId;
+  final CompanyRepository repository;
+
+  @override
+  State<_InviteSection> createState() => _InviteSectionState();
+}
+
+class _InviteSectionState extends State<_InviteSection> {
+  final _usernameController = TextEditingController();
+  CompanyRole _role = CompanyRole.member;
+  late Future<List<PendingInvite>> _invitesFuture = _loadInvites();
+  String? _error;
+
+  Future<List<PendingInvite>> _loadInvites() =>
+      widget.repository.fetchPendingInvites(widget.companyId);
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendInvite() async {
+    final username = _usernameController.text.trim();
+    if (!UsernameAuth.isValidUsername(username)) {
+      setState(() => _error = '아이디는 영문/숫자/밑줄 3~20자여야 합니다.');
+      return;
+    }
+    setState(() => _error = null);
+    try {
+      await widget.repository.inviteMember(
+        widget.companyId,
+        username: username,
+        role: _role,
+      );
+      _usernameController.clear();
+      setState(() => _invitesFuture = _loadInvites());
+    } catch (e) {
+      setState(() => _error = '초대에 실패했습니다: $e');
+    }
+  }
+
+  Future<void> _cancelInvite(String inviteId) async {
+    await widget.repository.cancelInvite(inviteId);
+    setState(() => _invitesFuture = _loadInvites());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('구성원 초대', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _usernameController,
+                decoration: const InputDecoration(labelText: '초대할 아이디'),
+                onSubmitted: (_) => _sendInvite(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            DropdownButton<CompanyRole>(
+              value: _role,
+              items: const [
+                DropdownMenuItem(
+                  value: CompanyRole.member,
+                  child: Text('일반 직원'),
+                ),
+                DropdownMenuItem(
+                  value: CompanyRole.hrManager,
+                  child: Text('인사관리자'),
+                ),
+              ],
+              onChanged: (role) {
+                if (role != null) {
+                  setState(() => _role = role);
+                }
+              },
+            ),
+          ],
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _sendInvite,
+            child: const Text('초대장 보내기'),
+          ),
+        ),
+        FutureBuilder<List<PendingInvite>>(
+          future: _invitesFuture,
+          builder: (context, snapshot) {
+            final invites = snapshot.data;
+            if (invites == null) {
+              return const SizedBox.shrink();
+            }
+            if (invites.isEmpty) {
+              return const Text(
+                '대기 중인 초대가 없습니다.',
+                style: TextStyle(color: Colors.black54),
+              );
+            }
+            return Column(
+              children: [
+                for (final invite in invites)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(invite.username),
+                    subtitle: Text(
+                      invite.role == CompanyRole.hrManager ? '인사관리자' : '일반 직원',
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: '초대 취소',
+                      onPressed: () => _cancelInvite(invite.id),
+                    ),
+                  ),
+              ],
+            );
           },
         ),
       ],

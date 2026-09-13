@@ -1,4 +1,6 @@
 import 'package:ai_office/data/company_role.dart';
+import 'package:ai_office/data/pending_invite.dart';
+import 'package:ai_office/data/username_auth.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
@@ -13,10 +15,16 @@ class CompanyRepository {
 
   final SupabaseClient _client;
 
-  /// Returns the current user's company id, creating one (seeded with the
-  /// sample employee roster) on first sign-in.
+  /// Returns the current user's company id.
+  ///
+  /// Resolution order: a company this user owns; a company they're already
+  /// a member of; a pending invite addressed to their email (accepted on
+  /// the spot); otherwise a brand-new company (seeded with the sample
+  /// employee roster) is created for them, as on every first sign-in before
+  /// invites existed.
   Future<String> ensureCompany() async {
-    final userId = _client.auth.currentUser!.id;
+    final user = _client.auth.currentUser!;
+    final userId = user.id;
 
     final existing = await _client
         .from('companies')
@@ -25,6 +33,38 @@ class CompanyRepository {
         .maybeSingle();
     if (existing != null) {
       return existing['id'] as String;
+    }
+
+    final membership = await _client
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (membership != null) {
+      return membership['company_id'] as String;
+    }
+
+    final email = user.email;
+    if (email != null) {
+      final invite = await _client
+          .from('invites')
+          .select('id, company_id, role')
+          .eq('email', email)
+          .eq('status', 'pending')
+          .maybeSingle();
+      if (invite != null) {
+        final companyId = invite['company_id'] as String;
+        await _client.from('company_members').insert({
+          'company_id': companyId,
+          'user_id': userId,
+          'role': invite['role'] as String,
+        });
+        await _client
+            .from('invites')
+            .update({'status': 'accepted'})
+            .eq('id', invite['id'] as String);
+        return companyId;
+      }
     }
 
     final created = await _client
@@ -79,6 +119,37 @@ class CompanyRepository {
     await _client
         .from('employees')
         .upsert(_toRow(companyId, employee), onConflict: 'id');
+  }
+
+  /// Invites [username] to join [companyId] with [role]. Takes effect the
+  /// next time that username signs up or logs in (see [ensureCompany]).
+  Future<void> inviteMember(
+    String companyId, {
+    required String username,
+    required CompanyRole role,
+  }) async {
+    await _client.from('invites').insert({
+      'company_id': companyId,
+      'email': UsernameAuth.toEmail(username),
+      'role': role.dbValue,
+      'invited_by': _client.auth.currentUser!.id,
+    });
+  }
+
+  /// Lists invites for [companyId] that haven't been accepted yet.
+  Future<List<PendingInvite>> fetchPendingInvites(String companyId) async {
+    final rows = await _client
+        .from('invites')
+        .select()
+        .eq('company_id', companyId)
+        .eq('status', 'pending')
+        .order('created_at');
+    return rows.map(PendingInvite.fromRow).toList();
+  }
+
+  /// Withdraws an invite that hasn't been accepted yet.
+  Future<void> cancelInvite(String inviteId) async {
+    await _client.from('invites').delete().eq('id', inviteId);
   }
 
   /// Row for the initial seed insert — omits `id` so Postgres generates a

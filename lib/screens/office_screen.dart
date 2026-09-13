@@ -1,3 +1,4 @@
+import 'package:ai_office/data/company_repository.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/chat_panel.dart';
@@ -14,6 +15,8 @@ class OfficeScreen extends StatelessWidget {
     this.game,
     this.onLogout,
     this.canManageRoster = true,
+    this.companyId,
+    this.repository,
     super.key,
   });
 
@@ -28,6 +31,13 @@ class OfficeScreen extends StatelessWidget {
   /// constructor) keep today's open-by-default behavior. Hosts behind
   /// Supabase auth should pass the user's actual company role here.
   final bool canManageRoster;
+
+  /// The signed-in user's company id and a repository to manage it — both
+  /// null for callers without auth (tests, the no-arg constructor), which
+  /// hides the roster panel's invite section since there's no company to
+  /// invite anyone into.
+  final String? companyId;
+  final CompanyRepository? repository;
 
   @override
   Widget build(BuildContext context) {
@@ -72,8 +82,11 @@ class OfficeScreen extends StatelessWidget {
                       onPressed: canManageRoster
                           ? () => showDialog<void>(
                                 context: context,
-                                builder: (_) =>
-                                    RosterEditorDialog(game: officeGame),
+                                builder: (_) => RosterEditorDialog(
+                                  game: officeGame,
+                                  companyId: companyId,
+                                  repository: repository,
+                                ),
                               )
                           : null,
                       icon: const Icon(Icons.badge_outlined),

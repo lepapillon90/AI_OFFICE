@@ -43,11 +43,13 @@ class _LoadedSession {
     required this.game,
     required this.canManageRoster,
     required this.multiplayer,
+    required this.companyId,
   });
 
   final OfficeGame game;
   final bool canManageRoster;
   final MultiplayerChannel multiplayer;
+  final String companyId;
 }
 
 class _CompanyLoader extends StatefulWidget {
@@ -96,6 +98,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       game: game,
       canManageRoster: role.canManageRoster,
       multiplayer: multiplayer,
+      companyId: companyId,
     );
   }
 
@@ -130,6 +133,8 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
           game: session.game,
           canManageRoster: session.canManageRoster,
           onLogout: () => Supabase.instance.client.auth.signOut(),
+          companyId: session.companyId,
+          repository: widget.repository,
         );
       },
     );

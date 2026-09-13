@@ -24,4 +24,14 @@ abstract final class UsernameAuth {
   static bool isValidUsername(String value) => _usernamePattern.hasMatch(value);
 
   static String toEmail(String username) => '$username@$domain';
+
+  /// Reverses [toEmail] for display purposes (e.g. showing an invite's
+  /// target as a username instead of the internal synthetic email).
+  static String? usernameFromEmail(String email) {
+    final suffix = '@$domain';
+    if (!email.toLowerCase().endsWith(suffix)) {
+      return null;
+    }
+    return email.substring(0, email.length - suffix.length);
+  }
 }
