@@ -25,16 +25,22 @@
   - owner/hr_manager만 "직원 정보 관리" 패널 사용 가능, 수정 내용은 Supabase에 저장
   - 로그아웃 → 재로그인 후에도 수정한 직원 정보가 그대로 복원됨을 실제 확인
   - 오피스 레이아웃 저장, 플레이어 프로필 영속화, 인사관리자 초대 UI는 이연
+- Phase 5 실시간 위치 공유 (`MultiplayerChannel`, Supabase Realtime Presence)
+  - 같은 회사 채널(`office:company:<id>`)에서 다른 접속자의 위치·이름·직책·상태를 실시간으로 표시
+  - 같은 층에 있을 때만 렌더링, 층 이동 시 자동으로 나타나고 사라짐
+  - 위치는 150ms 간격으로 스로틀링, 층 전환·프로필 변경은 즉시 전파
+  - 가짜 두 번째 사용자를 같은 채널에 연결해 실제 브라우저 세션에 실시간 반영되는 것까지 검증
+  - 공간 채팅, 초대 UI는 다음 단계로 이연 (사용자 요청)
 
 ## 다음 작업
 
-1. 실시간 멀티플레이와 채팅 (Phase 5)
+1. 공간 채팅 (Phase 5 나머지)
 2. AI 직원 연결 (실제 제공자 API로 NPC 상태 갱신, Phase 6)
 3. 1·3·4층에 해당 층 용도에 맞는 실제 콘텐츠/NPC 보강 (현재는 장식용 오브젝트만 배치)
 4. 인사관리자 초대 UI (현재는 `company_members`에 직접 행을 추가해야 함)
 
 ## 검증 기록
 
-- `flutter test`: 24개 통과
+- `flutter test`: 27개 통과
 - `dart analyze`: 이상 없음
 - `flutter analyze`: 이 PC의 Flutter 분석 서버 LSP 통신 오류로 진단 전 종료됨 (원인 분석: `docs/KNOWN_ISSUES.md`)

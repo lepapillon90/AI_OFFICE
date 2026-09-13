@@ -1,3 +1,5 @@
+import 'package:ai_office/data/multiplayer_channel.dart';
+import 'package:ai_office/data/remote_player_state.dart';
 import 'package:ai_office/game/exterior_backdrop.dart';
 import 'package:ai_office/game/floors/executive_map.dart';
 import 'package:ai_office/game/floors/floor.dart';
@@ -8,12 +10,14 @@ import 'package:ai_office/game/interactions/computer_interaction.dart';
 import 'package:ai_office/game/interactions/elevator_interaction.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:ai_office/game/map/office_map.dart';
+import 'package:ai_office/game/multiplayer/remote_player_component.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
 import 'package:ai_office/game/player/player_profile.dart';
+import 'package:ai_office/game/player/player_status.dart';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/experimental.dart';
@@ -27,10 +31,12 @@ class OfficeGame extends FlameGame
   OfficeGame({
     List<AiEmployee>? employees,
     void Function(AiEmployee)? onEmployeeChanged,
+    MultiplayerChannel? multiplayer,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
           onEmployeeChanged: onEmployeeChanged,
+          multiplayer: multiplayer,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -40,6 +46,7 @@ class OfficeGame extends FlameGame
     required Vector2 playerPosition,
     List<AiEmployee>? employees,
     this.onEmployeeChanged,
+    this.multiplayer,
   }) {
     _employees = List.of(employees ?? sampleEmployees);
     computers = _buildComputers()..forEach((c) => c.priority = _furniturePriority);
@@ -78,6 +85,12 @@ class OfficeGame extends FlameGame
   /// Called after [updateEmployee] applies a change, so the host app can
   /// persist it (e.g. to Supabase).
   final void Function(AiEmployee)? onEmployeeChanged;
+
+  /// Shares this player's position/profile with other signed-in users in
+  /// the same company, and reports theirs back. Null outside a signed-in
+  /// session (e.g. tests).
+  final MultiplayerChannel? multiplayer;
+  final Map<String, RemotePlayerComponent> _remotePlayers = {};
   final Map<String, NpcComponent> _npcsByWorkstation = {};
   Floor _currentFloor = Floor.workspace;
   ComputerInteraction? _nearbyComputer;
@@ -159,6 +172,8 @@ class OfficeGame extends FlameGame
       considerViewport: true,
     );
     _onPlayerMoved(player.position);
+    _refreshRemotePlayerVisibility();
+    _broadcastState(force: true);
     closeElevatorPopup();
     notifyListeners();
   }
@@ -198,6 +213,7 @@ class OfficeGame extends FlameGame
   /// by an owner/HR-manager admin panel.
   void updatePlayerProfile(PlayerProfile updated) {
     player.updateProfile(updated);
+    _broadcastState(force: true);
     notifyListeners();
   }
 
@@ -215,6 +231,14 @@ class OfficeGame extends FlameGame
       considerViewport: true,
     );
     camera.follow(player, snap: true);
+
+    final multiplayer = this.multiplayer;
+    if (multiplayer != null) {
+      await multiplayer.connect(
+        initial: _buildLocalState(multiplayer.userId),
+        onChanged: _onRemoteStatesChanged,
+      );
+    }
   }
 
   @override
@@ -268,6 +292,65 @@ class OfficeGame extends FlameGame
       notifyListeners();
     }
     _updateElevatorProximity(position);
+    _broadcastState();
+  }
+
+  RemotePlayerState _buildLocalState(String userId) {
+    final profile = player.profile;
+    return RemotePlayerState(
+      userId: userId,
+      name: profile.name,
+      role: profile.role,
+      statusLabel: profile.status.displayLabel,
+      statusColorValue: profile.status.displayColor.toARGB32(),
+      floorLevel: _currentFloor.level,
+      x: player.position.x,
+      y: player.position.y,
+    );
+  }
+
+  void _broadcastState({bool force = false}) {
+    final multiplayer = this.multiplayer;
+    if (multiplayer == null) {
+      return;
+    }
+    multiplayer.updateState(_buildLocalState(multiplayer.userId), force: force);
+  }
+
+  void _onRemoteStatesChanged(Map<String, RemotePlayerState> states) {
+    final disconnectedIds =
+        _remotePlayers.keys.where((id) => !states.containsKey(id)).toList();
+    for (final id in disconnectedIds) {
+      _remotePlayers.remove(id)?.removeFromParent();
+    }
+
+    for (final state in states.values) {
+      var component = _remotePlayers[state.userId];
+      if (component == null) {
+        component = RemotePlayerComponent(state: state)
+          ..priority = _playerPriority;
+        _remotePlayers[state.userId] = component;
+      } else {
+        component.applyState(state);
+      }
+      final sameFloor = state.floorLevel == _currentFloor.level;
+      if (sameFloor && !component.isMounted) {
+        world.add(component);
+      } else if (!sameFloor && component.isMounted) {
+        component.removeFromParent();
+      }
+    }
+  }
+
+  void _refreshRemotePlayerVisibility() {
+    for (final component in _remotePlayers.values) {
+      final sameFloor = component.floorLevel == _currentFloor.level;
+      if (sameFloor && !component.isMounted) {
+        world.add(component);
+      } else if (!sameFloor && component.isMounted) {
+        component.removeFromParent();
+      }
+    }
   }
 
   void _updateComputerProximity(Vector2 playerPosition) {

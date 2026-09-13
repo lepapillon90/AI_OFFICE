@@ -1,6 +1,5 @@
 import 'package:ai_office/data/company_repository.dart';
-import 'package:ai_office/data/company_role.dart';
-import 'package:ai_office/game/npc/ai_employee.dart';
+import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/auth/login_screen.dart';
 import 'package:ai_office/screens/office_screen.dart';
@@ -37,6 +36,18 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
+class _LoadedSession {
+  const _LoadedSession({
+    required this.game,
+    required this.canManageRoster,
+    required this.multiplayer,
+  });
+
+  final OfficeGame game;
+  final bool canManageRoster;
+  final MultiplayerChannel multiplayer;
+}
+
 class _CompanyLoader extends StatefulWidget {
   const _CompanyLoader({super.key, required this.repository});
 
@@ -47,18 +58,44 @@ class _CompanyLoader extends StatefulWidget {
 }
 
 class _CompanyLoaderState extends State<_CompanyLoader> {
-  late final Future<(String, CompanyRole, List<AiEmployee>)> _future = _load();
+  late final Future<_LoadedSession> _future = _load();
+  MultiplayerChannel? _multiplayerToDispose;
 
-  Future<(String, CompanyRole, List<AiEmployee>)> _load() async {
+  Future<_LoadedSession> _load() async {
     final companyId = await widget.repository.ensureCompany();
     final role = await widget.repository.fetchRole(companyId);
     final employees = await widget.repository.fetchEmployees(companyId);
-    return (companyId, role, employees);
+
+    final multiplayer = MultiplayerChannel(
+      client: Supabase.instance.client,
+      companyId: companyId,
+      userId: Supabase.instance.client.auth.currentUser!.id,
+    );
+    _multiplayerToDispose = multiplayer;
+
+    final game = OfficeGame(
+      employees: employees,
+      onEmployeeChanged: (employee) =>
+          widget.repository.upsertEmployee(companyId, employee),
+      multiplayer: multiplayer,
+    );
+
+    return _LoadedSession(
+      game: game,
+      canManageRoster: role.canManageRoster,
+      multiplayer: multiplayer,
+    );
+  }
+
+  @override
+  void dispose() {
+    _multiplayerToDispose?.disconnect();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<(String, CompanyRole, List<AiEmployee>)>(
+    return FutureBuilder<_LoadedSession>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -76,14 +113,10 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final (companyId, role, employees) = snapshot.data!;
+        final session = snapshot.data!;
         return OfficeScreen(
-          game: OfficeGame(
-            employees: employees,
-            onEmployeeChanged: (employee) =>
-                widget.repository.upsertEmployee(companyId, employee),
-          ),
-          canManageRoster: role.canManageRoster,
+          game: session.game,
+          canManageRoster: session.canManageRoster,
           onLogout: () => Supabase.instance.client.auth.signOut(),
         );
       },
