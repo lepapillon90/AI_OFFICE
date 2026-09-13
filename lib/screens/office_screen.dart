@@ -1,5 +1,6 @@
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
+import 'package:ai_office/screens/chat_panel.dart';
 import 'package:ai_office/screens/computer_popup.dart';
 import 'package:ai_office/screens/elevator_popup.dart';
 import 'package:ai_office/screens/profile_card.dart';
@@ -78,6 +79,16 @@ class OfficeScreen extends StatelessWidget {
                       icon: const Icon(Icons.badge_outlined),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: officeGame.isChatOpen ? '채팅 닫기' : '공간 채팅',
+                    child: IconButton.filled(
+                      onPressed: officeGame.isChatOpen
+                          ? officeGame.closeChat
+                          : officeGame.openChat,
+                      icon: const Icon(Icons.chat_bubble_outline),
+                    ),
+                  ),
                   if (onLogout != null) ...[
                     const SizedBox(width: 8),
                     Tooltip(
@@ -148,6 +159,7 @@ class OfficeScreen extends StatelessWidget {
               ),
             if (officeGame.isElevatorPopupOpen) ElevatorPopup(game: officeGame),
             if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
+            if (officeGame.isChatOpen) ChatPanel(game: officeGame),
           ],
         ),
       ),

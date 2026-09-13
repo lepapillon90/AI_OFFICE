@@ -1,3 +1,4 @@
+import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/remote_player_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,6 +28,7 @@ class MultiplayerChannel {
   Future<void> connect({
     required RemotePlayerState initial,
     required void Function(Map<String, RemotePlayerState>) onChanged,
+    void Function(ChatMessage)? onChatMessage,
   }) async {
     final channel = _client.channel(
       'office:company:$_companyId',
@@ -51,6 +53,18 @@ class MultiplayerChannel {
       ..onPresenceSync((_) => emit())
       ..onPresenceJoin((_) => emit())
       ..onPresenceLeave((_) => emit());
+
+    if (onChatMessage != null) {
+      channel.onBroadcast(
+        event: 'chat',
+        callback: (payload) {
+          final message = ChatMessage.fromBroadcastJson(payload);
+          if (message != null && message.userId != userId) {
+            onChatMessage(message);
+          }
+        },
+      );
+    }
 
     final subscribed = <void>[];
     channel.subscribe((status, error) async {
@@ -82,6 +96,15 @@ class MultiplayerChannel {
     }
     _lastSentAt = now;
     channel.track(state.toJson());
+  }
+
+  /// Broadcasts [message] to the rest of the company immediately. Chat
+  /// history persistence is handled separately (see [ChatRepository]).
+  void sendChat(ChatMessage message) {
+    _channel?.sendBroadcastMessage(
+      event: 'chat',
+      payload: message.toBroadcastJson(),
+    );
   }
 
   Future<void> disconnect() async {

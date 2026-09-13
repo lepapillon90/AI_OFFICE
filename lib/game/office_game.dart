@@ -1,3 +1,4 @@
+import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/data/remote_player_state.dart';
 import 'package:ai_office/game/exterior_backdrop.dart';
@@ -32,11 +33,15 @@ class OfficeGame extends FlameGame
     List<AiEmployee>? employees,
     void Function(AiEmployee)? onEmployeeChanged,
     MultiplayerChannel? multiplayer,
+    List<ChatMessage>? initialChatMessages,
+    void Function(ChatMessage)? onChatMessageSent,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
           onEmployeeChanged: onEmployeeChanged,
           multiplayer: multiplayer,
+          initialChatMessages: initialChatMessages,
+          onChatMessageSent: onChatMessageSent,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -47,7 +52,10 @@ class OfficeGame extends FlameGame
     List<AiEmployee>? employees,
     this.onEmployeeChanged,
     this.multiplayer,
+    List<ChatMessage>? initialChatMessages,
+    this.onChatMessageSent,
   }) {
+    _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
     computers = _buildComputers()..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
@@ -92,6 +100,13 @@ class OfficeGame extends FlameGame
   final MultiplayerChannel? multiplayer;
   final Map<String, RemotePlayerComponent> _remotePlayers = {};
   final Map<String, NpcComponent> _npcsByWorkstation = {};
+
+  /// Called after [sendChatMessage] broadcasts a message, so the host app
+  /// can persist it (e.g. to Supabase) for chat history.
+  final void Function(ChatMessage)? onChatMessageSent;
+  late List<ChatMessage> _chatMessages;
+  bool _isChatOpen = false;
+
   Floor _currentFloor = Floor.workspace;
   ComputerInteraction? _nearbyComputer;
   bool _isNearElevator = false;
@@ -196,6 +211,54 @@ class OfficeGame extends FlameGame
     notifyListeners();
   }
 
+  /// Whether the space chat panel is open.
+  bool get isChatOpen => _isChatOpen;
+
+  /// The company's shared space chat, oldest first.
+  List<ChatMessage> get chatMessages => List.unmodifiable(_chatMessages);
+
+  /// Opens the space chat panel, pausing player movement while typing.
+  void openChat() {
+    if (_isChatOpen) {
+      return;
+    }
+    _isChatOpen = true;
+    player.movementEnabled = false;
+    notifyListeners();
+  }
+
+  /// Closes the space chat panel and restores normal movement.
+  void closeChat() {
+    if (!_isChatOpen) {
+      return;
+    }
+    _isChatOpen = false;
+    player.movementEnabled = true;
+    notifyListeners();
+  }
+
+  /// Sends [body] as a space chat message: shows it locally right away,
+  /// broadcasts it to other signed-in users, and reports it via
+  /// [onChatMessageSent] for the host app to persist.
+  void sendChatMessage(String body) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    final multiplayer = this.multiplayer;
+    final message = ChatMessage(
+      id: '${DateTime.now().microsecondsSinceEpoch}-${multiplayer?.userId ?? 'local'}',
+      userId: multiplayer?.userId ?? 'local',
+      senderName: player.profile.name,
+      body: trimmed,
+      createdAt: DateTime.now(),
+    );
+    _chatMessages = [..._chatMessages, message];
+    multiplayer?.sendChat(message);
+    onChatMessageSent?.call(message);
+    notifyListeners();
+  }
+
   /// Applies edited roster data for one AI employee (name, role, status).
   /// Intended for use by an owner/HR-manager admin panel.
   void updateEmployee(AiEmployee updated) {
@@ -237,8 +300,14 @@ class OfficeGame extends FlameGame
       await multiplayer.connect(
         initial: _buildLocalState(multiplayer.userId),
         onChanged: _onRemoteStatesChanged,
+        onChatMessage: _onRemoteChatMessage,
       );
     }
+  }
+
+  void _onRemoteChatMessage(ChatMessage message) {
+    _chatMessages = [..._chatMessages, message];
+    notifyListeners();
   }
 
   @override
@@ -266,6 +335,9 @@ class OfficeGame extends FlameGame
       }
       if (_isProfileCardOpen) {
         closeProfileCard();
+      }
+      if (_isChatOpen) {
+        closeChat();
       }
     }
   }

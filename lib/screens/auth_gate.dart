@@ -1,3 +1,5 @@
+import 'package:ai_office/data/chat_message.dart';
+import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/game/office_game.dart';
@@ -59,12 +61,18 @@ class _CompanyLoader extends StatefulWidget {
 
 class _CompanyLoaderState extends State<_CompanyLoader> {
   late final Future<_LoadedSession> _future = _load();
+  final _chatRepository = ChatRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
     final companyId = await widget.repository.ensureCompany();
     final role = await widget.repository.fetchRole(companyId);
     final employees = await widget.repository.fetchEmployees(companyId);
+    // Falls back to no history rather than failing the whole session if
+    // the `messages` table's migration hasn't been run yet.
+    final chatHistory = await _chatRepository
+        .fetchRecentMessages(companyId)
+        .catchError((_) => <ChatMessage>[]);
 
     final multiplayer = MultiplayerChannel(
       client: Supabase.instance.client,
@@ -78,6 +86,10 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       onEmployeeChanged: (employee) =>
           widget.repository.upsertEmployee(companyId, employee),
       multiplayer: multiplayer,
+      initialChatMessages: chatHistory,
+      onChatMessageSent: (message) => _chatRepository
+          .sendMessage(companyId, message)
+          .catchError((_) {}),
     );
 
     return _LoadedSession(
