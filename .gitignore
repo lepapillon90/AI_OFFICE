@@ -1,0 +1,15 @@
+# Runtime output
+logs/
+
+# Build and dependency output
+node_modules/
+dist/
+build/
+out/
+coverage/
+
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
