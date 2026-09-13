@@ -1,4 +1,3 @@
-import 'package:ai_office/main.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/office_screen.dart';
 import 'package:flame/game.dart';
@@ -7,13 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('renders the office game screen', (tester) async {
-    await tester.pumpWidget(const OfficeApp());
+    await tester.pumpWidget(const MaterialApp(home: OfficeScreen()));
 
     expect(find.byType(GameWidget<OfficeGame>), findsOneWidget);
   });
 
   testWidgets('loads the player sprite asset', (tester) async {
-    await tester.pumpWidget(const OfficeApp());
+    await tester.pumpWidget(const MaterialApp(home: OfficeScreen()));
     await tester.pumpWidget(
       const MaterialApp(
         home: Image(

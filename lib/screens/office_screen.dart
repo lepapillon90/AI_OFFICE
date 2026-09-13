@@ -9,9 +9,13 @@ import 'package:flutter/material.dart';
 
 /// Hosts the full-screen Flame office experience.
 class OfficeScreen extends StatelessWidget {
-  const OfficeScreen({this.game, super.key});
+  const OfficeScreen({this.game, this.onLogout, super.key});
 
   final OfficeGame? game;
+
+  /// Shown as a logout button in the top bar when provided (i.e. when
+  /// hosted behind Supabase auth).
+  final VoidCallback? onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -46,15 +50,29 @@ class OfficeScreen extends StatelessWidget {
             Positioned(
               top: 16,
               right: 16,
-              child: Tooltip(
-                message: '직원 정보 관리 (대표·인사관리자 전용 예정)',
-                child: IconButton.filled(
-                  onPressed: () => showDialog<void>(
-                    context: context,
-                    builder: (_) => RosterEditorDialog(game: officeGame),
+              child: Row(
+                children: [
+                  Tooltip(
+                    message: '직원 정보 관리 (대표·인사관리자 전용 예정)',
+                    child: IconButton.filled(
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => RosterEditorDialog(game: officeGame),
+                      ),
+                      icon: const Icon(Icons.badge_outlined),
+                    ),
                   ),
-                  icon: const Icon(Icons.badge_outlined),
-                ),
+                  if (onLogout != null) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: '로그아웃',
+                      child: IconButton.filled(
+                        onPressed: onLogout,
+                        icon: const Icon(Icons.logout),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             if (officeGame.isComputerNearby && !officeGame.isComputerPopupOpen)

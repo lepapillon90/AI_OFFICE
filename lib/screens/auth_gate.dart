@@ -1,0 +1,89 @@
+import 'package:ai_office/data/company_repository.dart';
+import 'package:ai_office/game/npc/ai_employee.dart';
+import 'package:ai_office/game/office_game.dart';
+import 'package:ai_office/screens/auth/login_screen.dart';
+import 'package:ai_office/screens/office_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Shows [LoginScreen] while signed out; once signed in, loads the user's
+/// company and AI employee roster from Supabase and shows [OfficeScreen].
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  final _repository = CompanyRepository(Supabase.instance.client);
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session == null) {
+          return const LoginScreen();
+        }
+        return _CompanyLoader(
+          key: ValueKey(session.user.id),
+          repository: _repository,
+        );
+      },
+    );
+  }
+}
+
+class _CompanyLoader extends StatefulWidget {
+  const _CompanyLoader({super.key, required this.repository});
+
+  final CompanyRepository repository;
+
+  @override
+  State<_CompanyLoader> createState() => _CompanyLoaderState();
+}
+
+class _CompanyLoaderState extends State<_CompanyLoader> {
+  late final Future<(String, List<AiEmployee>)> _future = _load();
+
+  Future<(String, List<AiEmployee>)> _load() async {
+    final companyId = await widget.repository.ensureCompany();
+    final employees = await widget.repository.fetchEmployees(companyId);
+    return (companyId, employees);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<(String, List<AiEmployee>)>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('회사 데이터를 불러오지 못했습니다.\n${snapshot.error}'),
+              ),
+            ),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final (companyId, employees) = snapshot.data!;
+        return OfficeScreen(
+          game: OfficeGame(
+            employees: employees,
+            onEmployeeChanged: (employee) =>
+                widget.repository.upsertEmployee(companyId, employee),
+          ),
+          onLogout: () => Supabase.instance.client.auth.signOut(),
+        );
+      },
+    );
+  }
+}

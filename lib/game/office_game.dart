@@ -24,13 +24,24 @@ import 'package:flutter/widgets.dart';
 /// The interactive office world and its camera configuration.
 class OfficeGame extends FlameGame
     with HasKeyboardHandlerComponents, ScrollDetector, ChangeNotifier {
-  OfficeGame() : this._(playerPosition: OfficeLayout.worldSize.clone() / 2);
+  OfficeGame({
+    List<AiEmployee>? employees,
+    void Function(AiEmployee)? onEmployeeChanged,
+  }) : this._(
+          playerPosition: OfficeLayout.worldSize.clone() / 2,
+          employees: employees,
+          onEmployeeChanged: onEmployeeChanged,
+        );
 
   OfficeGame.forTest({required Vector2 playerPosition})
       : this._(playerPosition: playerPosition);
 
-  OfficeGame._({required Vector2 playerPosition}) {
-    _employees = List.of(sampleEmployees);
+  OfficeGame._({
+    required Vector2 playerPosition,
+    List<AiEmployee>? employees,
+    this.onEmployeeChanged,
+  }) {
+    _employees = List.of(employees ?? sampleEmployees);
     computers = _buildComputers()..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
       ..priority = _furniturePriority;
@@ -63,6 +74,10 @@ class OfficeGame extends FlameGame
   late final ElevatorInteraction elevator;
   late final Map<Floor, List<Component>> _floorComponents;
   late List<AiEmployee> _employees;
+
+  /// Called after [updateEmployee] applies a change, so the host app can
+  /// persist it (e.g. to Supabase).
+  final void Function(AiEmployee)? onEmployeeChanged;
   final Map<String, NpcComponent> _npcsByWorkstation = {};
   Floor _currentFloor = Floor.workspace;
   ComputerInteraction? _nearbyComputer;
@@ -175,6 +190,7 @@ class OfficeGame extends FlameGame
     }
     _employees[index] = updated;
     _npcsByWorkstation[updated.workstationId]?.updateEmployee(updated);
+    onEmployeeChanged?.call(updated);
     notifyListeners();
   }
 
