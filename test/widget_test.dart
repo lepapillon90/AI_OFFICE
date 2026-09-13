@@ -34,7 +34,7 @@ void main() {
 
     expect(find.text('리아'), findsOneWidget);
     expect(find.text('백엔드 개발자'), findsOneWidget);
-    expect(find.text('작업 중'), findsOneWidget);
+    expect(find.text('대기 중'), findsOneWidget);
     expect(find.text('대화하기'), findsOneWidget);
     expect(find.text('작업 확인'), findsOneWidget);
   });

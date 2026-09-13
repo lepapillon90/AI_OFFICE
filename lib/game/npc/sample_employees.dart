@@ -3,6 +3,12 @@ import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 
 /// Placeholder AI employee roster used until Supabase-backed data arrives.
+///
+/// Everyone starts 대기 중 (idle) — status now genuinely reflects activity
+/// (it flips to 작업 중 while handling an `@employee` chat command and
+/// back down once it's done, see OfficeGame._dispatchNpcCommand), so a
+/// hardcoded "working"/"meeting" here would be misleading rather than
+/// decorative.
 final List<AiEmployee> sampleEmployees = [
   AiEmployee(
     id: 'ai-1',
@@ -10,7 +16,7 @@ final List<AiEmployee> sampleEmployees = [
     role: '백엔드 개발자',
     provider: 'anthropic',
     workstationId: Workstation.all[0].id,
-    status: NpcStatus.working,
+    status: NpcStatus.idle,
   ),
   AiEmployee(
     id: 'ai-2',
@@ -18,7 +24,7 @@ final List<AiEmployee> sampleEmployees = [
     role: '프론트엔드 개발자',
     provider: 'anthropic',
     workstationId: Workstation.all[1].id,
-    status: NpcStatus.meeting,
+    status: NpcStatus.idle,
   ),
   AiEmployee(
     id: 'ai-3',
@@ -34,6 +40,6 @@ final List<AiEmployee> sampleEmployees = [
     role: '인사관리자',
     provider: 'anthropic',
     workstationId: Workstation.all[3].id,
-    status: NpcStatus.working,
+    status: NpcStatus.idle,
   ),
 ];

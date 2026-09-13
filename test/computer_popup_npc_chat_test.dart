@@ -63,8 +63,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
     await tester.pump();
 
+    // Give 노아 a non-idle status first so restoring "whatever it was
+    // before" is actually a meaningful check, not a no-op back to idle
+    // (sample data now starts everyone idle — see sample_employees.dart).
+    final noah = game.employees.firstWhere((e) => e.name == '노아');
+    game.updateEmployee(noah.copyWith(status: NpcStatus.meeting));
     final before = game.employees.firstWhere((e) => e.name == '노아');
-    expect(before.status, NpcStatus.meeting, reason: 'sample data for 노아');
+    expect(before.status, NpcStatus.meeting);
 
     game.sendChatMessage('@노아 상태 보고해줘');
     await tester.pump();
