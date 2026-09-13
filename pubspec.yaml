@@ -23,3 +23,7 @@ flutter:
     - assets/images/tiles/walls/
     - assets/images/characters/
     - assets/images/objects/
+  fonts:
+    - family: NotoSansKR
+      fonts:
+        - asset: assets/fonts/NotoSansKR-Regular.ttf

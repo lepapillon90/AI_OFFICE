@@ -39,6 +39,7 @@ class NpcComponent extends PositionComponent {
       textRenderer: TextPaint(
         style: TextStyle(
           color: employee.status.displayColor,
+          fontFamily: 'NotoSansKR',
           fontSize: 12,
           fontWeight: FontWeight.bold,
           backgroundColor: Colors.black54,

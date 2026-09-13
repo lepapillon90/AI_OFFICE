@@ -9,7 +9,8 @@ class OfficeApp extends StatelessWidget {
   const OfficeApp({super.key});
 
   @override
-  Widget build(BuildContext context) => const MaterialApp(
-        home: OfficeScreen(),
+  Widget build(BuildContext context) => MaterialApp(
+        theme: ThemeData(fontFamily: 'NotoSansKR'),
+        home: const OfficeScreen(),
       );
 }
