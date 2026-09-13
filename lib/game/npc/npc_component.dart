@@ -22,6 +22,8 @@ class NpcComponent extends PositionComponent {
   /// The AI employee currently assigned to this NPC.
   AiEmployee get employee => _employee;
 
+  void setRenderPriority(int value) => priority = value;
+
   late final SpriteComponent _sprite;
   late final NameTagComponent _nameTag;
 

@@ -50,6 +50,8 @@ class OfficePlayer extends SpriteComponent
   /// player's movement is constrained to.
   void changeFloorLayout(FloorLayout layout) => _floorLayout = layout;
 
+  void setRenderPriority(int value) => priority = value;
+
   PlayerProfile _profile;
   late final NameTagComponent _nameTag;
 
