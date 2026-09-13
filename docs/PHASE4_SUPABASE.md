@@ -118,7 +118,10 @@ drop policy if exists "owner_delete_employees" on employees;
 
 Authentication → Providers → Email이 켜져 있어야 합니다 (기본값).
 
-**로그인은 이메일이 아니라 "아이디"로 표시됩니다.** Supabase Auth는 내부적으로 항상 이메일 기반이라, 앱에서 입력한 아이디를 `아이디@ai-office.local` 형태의 가상 이메일로 변환해서 사용합니다(`lib/data/username_auth.dart`). 실제 메일함으로 발송되는 주소가 아니므로 **Authentication → Settings → "Confirm email"을 반드시 꺼두세요** — 켜져 있으면 도착하지 않을 확인 메일을 기다리게 되어 가입이 막힙니다.
+**로그인은 이메일이 아니라 "아이디"로 표시됩니다.** Supabase Auth는 내부적으로 항상 이메일 기반이라, 앱에서 입력한 아이디를 `아이디@mailinator.com` 형태의 가상 이메일로 변환해서 사용합니다(`lib/data/username_auth.dart`).
+
+- `.local`/`.internal`/`.test` 같은 예약 TLD, 그리고 `ai-office.com`처럼 실제 존재하지 않는 도메인도 전부 시도해봤지만 Supabase가 **도메인의 MX 레코드(실제 존재 여부)까지 검증**해서 거부했습니다. 그래서 실제 존재하고 MX 레코드가 있는 `mailinator.com`(가짜 회원가입용으로 널리 쓰이는 공개 더미 메일함 서비스)을 사용합니다.
+- **중요**: `@mailinator.com`으로 온 메일은 **누구나 읽을 수 있는 공개 메일함**입니다. 그래서 **Authentication → Settings → "Confirm email"을 반드시 꺼두세요** — 켜두면 확인 메일이 공개 메일함으로 가서 아무나 계정을 가로챌 수 있습니다. 나중에라도 "비밀번호 재설정(이메일)" 같은 기능을 추가하면 안 됩니다(같은 이유).
 
 ## 앱 동작
 

@@ -5,8 +5,19 @@
 ///
 /// These addresses are never sent real mail, so "Confirm email" must be
 /// turned off in the Supabase project's Auth settings.
+///
+/// Supabase's server-side email validator checks that the domain actually
+/// resolves (has an MX record), so neither a reserved special-use TLD
+/// (`.local`, `.internal`, `.test` — RFC 6761/6762) nor a made-up `.com`
+/// domain passes. [domain] must be a real, existing domain.
+///
+/// mailinator.com is used because it's a well-known public disposable-inbox
+/// domain built exactly for this ("fake signup") purpose. IMPORTANT: mail
+/// sent to any @mailinator.com address is publicly readable by anyone — so
+/// "Confirm email" and any email-based password reset must stay OFF for as
+/// long as this scheme is in use, or auth codes would leak publicly.
 abstract final class UsernameAuth {
-  static const domain = 'ai-office.local';
+  static const domain = 'mailinator.com';
 
   static final _usernamePattern = RegExp(r'^[a-zA-Z0-9_]{3,20}$');
 
