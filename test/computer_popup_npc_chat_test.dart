@@ -257,4 +257,164 @@ void main() {
       {'role': 'assistant', 'content': '답변'},
     ]);
   });
+
+  testWidgets(
+      'onTaskChanged fires with the pending task and again with its '
+      'resolved state', (tester) async {
+    final changes = <NpcTask>[];
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) =>
+          Future.value(const NpcCommandResult(reply: '완료')),
+      onTaskChanged: changes.add,
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    game.sendChatMessage('@하나 상태 보고해줘');
+    await tester.pump();
+    await tester.pump();
+
+    expect(changes, hasLength(2));
+    expect(changes.first.status, NpcTaskStatus.pending);
+    expect(changes.last.status, NpcTaskStatus.success);
+    expect(changes.last.id, changes.first.id);
+  });
+
+  testWidgets(
+      'onUsageEvent fires once per attempt, matching usageFor',
+      (tester) async {
+    final events = <bool>[];
+    var callCount = 0;
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) {
+        callCount++;
+        if (callCount == 1) {
+          return Future<NpcCommandResult>.error('boom');
+        }
+        return Future.value(const NpcCommandResult(reply: '완료'));
+      },
+      onUsageEvent: (employeeId, {required success, usage}) =>
+          events.add(success),
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    game.sendChatMessage('@하나 상태 보고해줘');
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(events, [false, true]);
+  });
+
+  testWidgets(
+      'generateDocument is called on success and its path lands on the '
+      'task; documentUrlFor resolves it via resolveDocumentUrl',
+      (tester) async {
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) =>
+          Future.value(const NpcCommandResult(reply: '보고서 내용')),
+      generateDocument: ({
+        required employeeId,
+        required employeeName,
+        required taskId,
+        required command,
+        required result,
+      }) =>
+          Future.value('company-1/$employeeId/$taskId.txt'),
+      resolveDocumentUrl: (path) =>
+          Future.value('https://example.com/signed/$path'),
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    final hana = game.employees.firstWhere((e) => e.name == '하나');
+    game.sendChatMessage('@하나 이번 주 채용 현황 정리해줘');
+    await tester.pump();
+    await tester.pump();
+
+    final task = game.tasksFor(hana).first;
+    expect(task.status, NpcTaskStatus.success);
+    expect(task.documentPath, 'company-1/${hana.id}/${task.id}.txt');
+
+    final url = await game.documentUrlFor(task);
+    expect(url, 'https://example.com/signed/${task.documentPath}');
+  });
+
+  testWidgets(
+      'documentUrlFor returns null for a task with no document or no '
+      'resolver configured', (tester) async {
+    final game = OfficeGame(
+      askEmployee: ({
+        required employeeName,
+        required employeeRole,
+        required command,
+        required history,
+      }) =>
+          Future.value(const NpcCommandResult(reply: '완료')),
+    );
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    final hana = game.employees.firstWhere((e) => e.name == '하나');
+    game.sendChatMessage('@하나 상태 보고해줘');
+    await tester.pump();
+    await tester.pump();
+
+    final task = game.tasksFor(hana).first;
+    expect(task.documentPath, isNull);
+    expect(await game.documentUrlFor(task), isNull);
+  });
+
+  test('initialTasks and initialUsage seed tasksFor/usageFor at startup', () {
+    final now = DateTime.now();
+    final game = OfficeGame(
+      initialTasks: [
+        NpcTask(
+          id: 'restored-1',
+          employeeId: 'ai-4',
+          command: '지난 명령',
+          status: NpcTaskStatus.success,
+          createdAt: now,
+          result: '지난 결과',
+        ),
+      ],
+      initialUsage: const {
+        'ai-4': NpcUsageSummary(
+          calls: 3,
+          successes: 2,
+          failures: 1,
+          promptTokens: 100,
+          completionTokens: 50,
+        ),
+      },
+    );
+
+    final hana = game.employees.firstWhere((e) => e.id == 'ai-4');
+    final tasks = game.tasksFor(hana);
+    expect(tasks, hasLength(1));
+    expect(tasks.first.id, 'restored-1');
+
+    final usage = game.usageFor(hana);
+    expect(usage.calls, 3);
+    expect(usage.successes, 2);
+    expect(usage.failures, 1);
+    expect(usage.totalTokens, 150);
+  });
 }

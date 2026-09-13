@@ -46,6 +46,22 @@ typedef NpcCommandHandler = Future<NpcCommandResult> Function({
   required List<Map<String, String>> history,
 });
 
+/// Turns a successful `askEmployee` reply into a saved work document (e.g.
+/// uploaded to Supabase Storage) and returns its storage path, or null if
+/// no document was produced. Null outside a signed-in session (e.g. tests)
+/// — tasks then simply have no [NpcTask.documentPath].
+typedef DocumentGenerator = Future<String?> Function({
+  required String employeeId,
+  required String employeeName,
+  required String taskId,
+  required String command,
+  required String result,
+});
+
+/// Resolves an [NpcTask.documentPath] to a URL the player can open (e.g. a
+/// Supabase Storage signed URL). Null outside a signed-in session.
+typedef DocumentUrlResolver = Future<String?> Function(String documentPath);
+
 /// The interactive office world and its camera configuration.
 class OfficeGame extends FlameGame
     with HasKeyboardHandlerComponents, ScrollDetector, ChangeNotifier {
@@ -56,6 +72,13 @@ class OfficeGame extends FlameGame
     List<ChatMessage>? initialChatMessages,
     void Function(ChatMessage)? onChatMessageSent,
     NpcCommandHandler? askEmployee,
+    List<NpcTask>? initialTasks,
+    Map<String, NpcUsageSummary>? initialUsage,
+    void Function(NpcTask task)? onTaskChanged,
+    void Function(String employeeId, {required bool success, NpcUsage? usage})?
+        onUsageEvent,
+    DocumentGenerator? generateDocument,
+    DocumentUrlResolver? resolveDocumentUrl,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
@@ -64,6 +87,12 @@ class OfficeGame extends FlameGame
           initialChatMessages: initialChatMessages,
           onChatMessageSent: onChatMessageSent,
           askEmployee: askEmployee,
+          initialTasks: initialTasks,
+          initialUsage: initialUsage,
+          onTaskChanged: onTaskChanged,
+          onUsageEvent: onUsageEvent,
+          generateDocument: generateDocument,
+          resolveDocumentUrl: resolveDocumentUrl,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -77,9 +106,21 @@ class OfficeGame extends FlameGame
     List<ChatMessage>? initialChatMessages,
     this.onChatMessageSent,
     this.askEmployee,
+    List<NpcTask>? initialTasks,
+    Map<String, NpcUsageSummary>? initialUsage,
+    this.onTaskChanged,
+    this.onUsageEvent,
+    this.generateDocument,
+    this.resolveDocumentUrl,
   }) {
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
+    for (final task in initialTasks ?? const <NpcTask>[]) {
+      _tasksByEmployee.putIfAbsent(task.employeeId, () => []).add(task);
+    }
+    if (initialUsage != null) {
+      _usageByEmployee.addAll(initialUsage);
+    }
     computers = _buildComputers()
       ..forEach((c) => c.priority = _furniturePriority);
     elevator = ElevatorInteraction(position: FloorLayouts.elevatorPosition)
@@ -138,6 +179,25 @@ class OfficeGame extends FlameGame
   /// a signed-in session (e.g. tests) — commands are then ignored.
   final NpcCommandHandler? askEmployee;
   late List<ChatMessage> _chatMessages;
+
+  /// Called whenever a task is created (`pending`) or resolves
+  /// (`success`/`error`), so the host app can upsert it (e.g. to
+  /// Supabase's `npc_tasks` table). Null outside a signed-in session.
+  final void Function(NpcTask task)? onTaskChanged;
+
+  /// Called once per `askEmployee` attempt (including retries), so the
+  /// host app can persist a usage event (e.g. to Supabase's
+  /// `npc_usage_events` table). Null outside a signed-in session.
+  final void Function(String employeeId, {required bool success, NpcUsage? usage})?
+      onUsageEvent;
+
+  /// Turns a successful reply into a saved work document — see
+  /// [DocumentGenerator]. Null outside a signed-in session.
+  final DocumentGenerator? generateDocument;
+
+  /// Resolves an [NpcTask.documentPath] to an openable URL — see
+  /// [DocumentUrlResolver]. Null outside a signed-in session.
+  final DocumentUrlResolver? resolveDocumentUrl;
 
   /// Structured command/response records per employee id, most recent
   /// last — backs [tasksFor] (the computer popup's "작업 이력" list) and is
@@ -354,6 +414,19 @@ class OfficeGame extends FlameGame
       completionTokens:
           current.completionTokens + (usage?.completionTokens ?? 0),
     );
+    onUsageEvent?.call(employeeId, success: success, usage: usage);
+  }
+
+  /// Resolves [task]'s [NpcTask.documentPath] to an openable URL via
+  /// [resolveDocumentUrl], or null if it has no document or no resolver is
+  /// configured (e.g. tests, no signed-in session).
+  Future<String?> documentUrlFor(NpcTask task) {
+    final path = task.documentPath;
+    final resolver = resolveDocumentUrl;
+    if (path == null || resolver == null) {
+      return Future.value(null);
+    }
+    return resolver(path);
   }
 
   /// The last [_historyTurnLimit] turns already exchanged with [employee],
@@ -552,6 +625,31 @@ class OfficeGame extends FlameGame
             usage: result!.usage,
           ),
         );
+
+        // Turns the reply into an actual saved work product — the "실제
+        // 업무 수행" a chat message alone doesn't convey — best-effort so a
+        // storage hiccup never blocks the chat reply itself.
+        final generateDocument = this.generateDocument;
+        if (generateDocument != null) {
+          try {
+            final documentPath = await generateDocument(
+              employeeId: employee.id,
+              employeeName: employee.name,
+              taskId: taskId,
+              command: command,
+              result: replyBody,
+            );
+            if (documentPath != null) {
+              _updateTask(
+                employee.id,
+                taskId,
+                (task) => task.copyWith(documentPath: documentPath),
+              );
+            }
+          } catch (_) {
+            // No document this time; the chat reply above already landed.
+          }
+        }
       } else {
         replyBody = '응답을 가져오지 못했습니다 (재시도 후에도 실패): $lastError';
         _setEmployeeStatus(employee, NpcStatus.error);
@@ -594,6 +692,7 @@ class OfficeGame extends FlameGame
     if (tasks.length > _taskHistoryLimit) {
       tasks.removeAt(0);
     }
+    onTaskChanged?.call(task);
   }
 
   /// Replaces the task identified by [employeeId]/[taskId] with the result
@@ -613,7 +712,9 @@ class OfficeGame extends FlameGame
     if (index == -1) {
       return;
     }
-    tasks[index] = update(tasks[index]);
+    final updated = update(tasks[index]);
+    tasks[index] = updated;
+    onTaskChanged?.call(updated);
   }
 
   /// Applies edited roster data for one AI employee (name, role, status).

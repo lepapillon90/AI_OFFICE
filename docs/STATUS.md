@@ -53,13 +53,16 @@
   - `OfficeGame.tasksFor(employee)`가 명령/결과/상태/시도 횟수를 `NpcTask`로 최근 20건 기록 — 컴퓨터 팝업 "작업 이력" 버튼이 단일 최근 답변이 아닌 전체 이력을 보여줌
   - `askEmployee` 실패 시 한 번 자동 재시도 후에도 실패해야 "오류" 상태로 전환 — 일시적 오류로 바로 에러 표시되던 문제 개선
   - 자동 테스트(`test/computer_popup_npc_chat_test.dart`)로 히스토리 전달·재시도 횟수·작업 기록 검증, 이 세션의 브라우저 텍스트 입력 문제로 실제 OpenAI 응답의 맥락 반영 여부는 클릭 검증 못함
-  - `NpcTask` 기록은 세션 메모리에만 있고 Supabase에 영속화하지 않음(이연)
 - Phase 6 사용량 추적 (`docs/PHASE6_AI_EMPLOYEES.md`) — 호출 횟수·성공/실패·토큰 사용량
   - `ask-employee` Edge Function이 OpenAI 응답의 `usage`(토큰 수)를 함께 반환 → `NpcCommandService`가 파싱해 `askEmployee` 결과(`NpcCommandResult`)에 포함
   - `OfficeGame.usageFor(employee)`/`totalUsage`가 직원별·전체 호출/성공/실패 횟수와 누적 토큰을 집계 — 자동 재시도로 인한 추가 호출도 각각 집계
   - 컴퓨터 팝업에 직원별 "호출 N회 (성공 N · 실패 N) · N 토큰" 요약과, 작업 이력 각 항목에 토큰 수 표시
   - 실제 비용(통화 환산)은 계산하지 않음 — OpenAI 대시보드에서 단가로 환산 필요
-  - 자동 테스트로 성공/실패/재시도 집계와 여러 명령에 걸친 누적 검증, 세션 메모리에만 있고 Supabase에 영속화하지 않음(이연)
+- Phase 6 DB 영속화 + 가상 문서 생성 (`docs/PHASE6_AI_EMPLOYEES.md`) — `NpcTask`/사용량이 재로그인 후에도 유지되고, 성공한 답변이 다운로드 가능한 문서가 됨
+  - `npc_tasks`/`npc_usage_events` 테이블 + `npc-documents` Storage 버킷 SQL을 문서에 추가 — **아직 사용자가 Supabase에서 실행하지 않았다면 이 부분만 미완료**(실행 전까지 작업 이력·사용량은 세션 메모리에만 있고 새로고침 시 사라짐, 앱 자체는 정상 동작)
+  - `OfficeGame`이 `onTaskChanged`/`onUsageEvent`로 매 변경을 알리고 `AuthGate`가 `NpcTaskRepository`/`NpcUsageRepository`로 저장, 로그인 시 `initialTasks`/`initialUsage`로 복원
+  - 성공한 명령마다 `generateDocument` → `NpcDocumentRepository.upload()`가 결과를 텍스트 문서로 `npc-documents` 버킷에 저장, "작업 이력"의 "문서 열기" 버튼이 서명된 URL을 새 탭으로 엶(`lib/util/open_url.dart` — `flutter test`의 VM에서도 컴파일되도록 `dart:html`을 조건부 export로 격리)
+  - 자동 테스트(`test/computer_popup_npc_chat_test.dart`)로 `onTaskChanged`/`onUsageEvent`/`generateDocument`/`documentUrlFor`/`initialTasks`/`initialUsage` 전부 검증, 실제 Supabase Storage 업로드·서명 URL 발급은 이 세션의 브라우저 문제로 클릭 검증 못함
 
 ## Phase 5 마무리 점검 (자동화 브라우저 환경의 한계)
 
@@ -78,10 +81,10 @@
 
 ## 다음 작업
 
-1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL과 `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL을 아직 안 하셨다면 Supabase SQL Editor에서 실행 — 이미 실행하셨다면 완료 상태
+1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL, `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL, 그리고 **새로 추가된** `npc_tasks`/`npc_usage_events` 테이블·`npc-documents` Storage 버킷 SQL을 아직 안 하셨다면 Supabase SQL Editor/대시보드에서 실행 — 실행 전까지는 작업 이력·사용량이 세션 메모리에만 있다가 새로고침 시 사라지고, "문서 열기" 버튼도 나타나지 않지만 앱 자체는 정상 동작
 2. 위 "Phase 5 마무리 점검"의 실제 브라우저 두 개 확인 (제가 자동화 환경에서는 재현 못 함)
-3. **권장**: 실제 브라우저로 2층 컴퓨터 앞에서 `[E]` → "대화하기"/"작업 확인" 버튼까지 한 번 직접 클릭해서 확인 (이 세션은 자동화 키보드 이동이 안 돼서 코드 검증만 완료)
-4. Phase 6 나머지(이연): 실제 비용(통화 환산) 계산, `NpcTask`/사용량 집계의 Supabase 영속화
+3. **권장**: 실제 브라우저로 2층 컴퓨터 앞에서 `[E]` → "대화하기"/"작업 이력"/"문서 열기" 버튼까지 한 번 직접 클릭해서 확인 (이 세션은 자동화 키보드 이동이 안 돼서 코드 검증만 완료)
+4. Phase 6 나머지(이연): 실제 비용(통화 환산) 계산, 사용량 상한/경고
 5. 3층 NPC 배치 완료 — 3층 프로젝트룸에 `도윤`(PM/기획자)·`하윤`(프로덕트 디자이너). `NpcPlacement` 레지스트리(`lib/game/npc/npc_placement.dart`)로 층 가구 배치에 맞춰 자리 배정, 채팅 `@이름` 명령도 동일하게 동작. **4층 대표실엔 일부러 AI 직원을 두지 않음** — 대표는 실제 로그인한 사용자 본인이므로 AI NPC가 그 역할을 대신하지 않음. **1층 로비는 동시에 진행 중인 isometric 로비 작업과 충돌을 피하려고 이번엔 건드리지 않음** — 그 작업이 정리되면 이어서 진행 필요. 자동 테스트(`test/npc_placement_test.dart`)로 배치·로스터 일치 확인, 이 세션의 브라우저 텍스트 입력 문제로 실제 채팅 명령 클릭 검증은 못함
 6. **[알려진 이슈] 1층 24×16 그리드 리사이즈 후 `test/lobby_runtime_test.dart`의 실제 층 전환 테스트가 10분 타임아웃** — `IsoLobbyLayout`을 15×11(171개 타일/오버레이)에서 24×16(390개)로 확대하면서 `changeFloor(Floor.lobby)`가 실제 스프라이트를 로드·마운트하는 데 걸리는 시간이 크게 늘어난 것으로 보임. `test/iso_lobby_layout_test.dart`(레이아웃 데이터)와 `test/iso_lobby_scene_test.dart`(컴포넌트 매핑)는 정상 통과하므로 리사이즈 자체의 로직 오류는 아니고, 실제 `flutter run`에서도 1층 진입 시 렌더링 비용이 늘어났을 가능성이 있음 — 사용자 요청으로 지금은 코드를 그대로 두고 이슈로만 기록. 타일을 개별 스프라이트 대신 배치/병합 이미지로 바꾸는 최적화가 필요하면 추후 진행
 

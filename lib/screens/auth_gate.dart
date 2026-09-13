@@ -3,6 +3,11 @@ import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
 import 'package:ai_office/data/npc_command_service.dart';
+import 'package:ai_office/data/npc_document_repository.dart';
+import 'package:ai_office/data/npc_task_repository.dart';
+import 'package:ai_office/data/npc_usage_repository.dart';
+import 'package:ai_office/game/npc/npc_task.dart';
+import 'package:ai_office/game/npc/npc_usage.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/auth/login_screen.dart';
 import 'package:ai_office/screens/office_screen.dart';
@@ -66,6 +71,9 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   late final Future<_LoadedSession> _future = _load();
   final _chatRepository = ChatRepository(Supabase.instance.client);
   final _npcCommandService = NpcCommandService(Supabase.instance.client);
+  final _taskRepository = NpcTaskRepository(Supabase.instance.client);
+  final _usageRepository = NpcUsageRepository(Supabase.instance.client);
+  final _documentRepository = NpcDocumentRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -77,6 +85,14 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     final chatHistory = await _chatRepository
         .fetchRecentMessages(companyId)
         .catchError((_) => <ChatMessage>[]);
+    // Same fallback for the npc_tasks/npc_usage_events tables — see
+    // docs/PHASE6_AI_EMPLOYEES.md's persistence section for the migration.
+    final taskHistory = await _taskRepository
+        .fetchRecentTasks(companyId)
+        .catchError((_) => <NpcTask>[]);
+    final usageSummaries = await _usageRepository
+        .fetchUsageSummaries(companyId)
+        .catchError((_) => <String, NpcUsageSummary>{});
 
     final multiplayer = MultiplayerChannel(
       client: Supabase.instance.client,
@@ -106,6 +122,30 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
         command: command,
         history: history,
       ),
+      initialTasks: taskHistory,
+      initialUsage: usageSummaries,
+      onTaskChanged: (task) =>
+          _taskRepository.upsertTask(companyId, task).catchError((_) {}),
+      onUsageEvent: (employeeId, {required success, usage}) =>
+          _usageRepository
+              .recordEvent(companyId, employeeId, success: success, usage: usage)
+              .catchError((_) {}),
+      generateDocument: ({
+        required employeeId,
+        required employeeName,
+        required taskId,
+        required command,
+        required result,
+      }) =>
+          _documentRepository.upload(
+        companyId: companyId,
+        employeeId: employeeId,
+        employeeName: employeeName,
+        taskId: taskId,
+        command: command,
+        result: result,
+      ),
+      resolveDocumentUrl: (path) => _documentRepository.signedUrl(path),
     );
 
     return _LoadedSession(

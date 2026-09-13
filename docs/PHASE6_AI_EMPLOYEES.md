@@ -20,6 +20,123 @@ notify pgrst, 'reload schema';
 
 **주의**: 귓속말도 같은 `messages` 테이블에 저장되며, DB 자체의 읽기 권한(RLS)은 여전히 "같은 회사 구성원이면 전체 조회 가능"입니다. 화면(`ChatPanel`)에서만 대상이 아닌 사용자에게 숨겨지는 방식이라, DB에 직접 접근하면 귓속말 내용도 보일 수 있습니다 — 데모/내부용 수준의 프라이버시입니다.
 
+## 필요한 설정 — 작업 이력·사용량 테이블 (DB 영속화)
+
+`NpcTask`(작업 이력)와 사용량 집계를 재로그인 후에도 유지하려면 아래 SQL을 Supabase SQL Editor에서 실행해주세요 (몇 번을 다시 실행해도 안전합니다). 실행 전까지는 이 데이터가 세션 메모리에만 있다가 새로고침/재로그인 시 사라지지만, 앱 자체는 정상 동작합니다(`AuthGate`가 조회 실패를 빈 목록/빈 맵으로 처리).
+
+```sql
+create table if not exists npc_tasks (
+  -- Text, not uuid: matches OfficeGame's client-generated task ids
+  -- ("<epoch-micros>-task-<employeeId>"), same convention as `messages.id`.
+  id text primary key,
+  company_id uuid not null references companies(id) on delete cascade,
+  employee_id text not null,
+  command text not null,
+  status text not null check (status in ('pending', 'success', 'error')),
+  result text,
+  error_message text,
+  attempts int not null default 0,
+  prompt_tokens int,
+  completion_tokens int,
+  total_tokens int,
+  document_path text,
+  created_at timestamptz not null default now()
+);
+
+alter table npc_tasks enable row level security;
+
+drop policy if exists "members_select_npc_tasks" on npc_tasks;
+drop policy if exists "members_write_npc_tasks" on npc_tasks;
+
+create policy "members_select_npc_tasks" on npc_tasks
+  for select using (
+    exists (
+      select 1 from company_members m
+      where m.company_id = npc_tasks.company_id and m.user_id = auth.uid()
+    )
+  );
+create policy "members_write_npc_tasks" on npc_tasks
+  for all using (
+    exists (
+      select 1 from company_members m
+      where m.company_id = npc_tasks.company_id and m.user_id = auth.uid()
+    )
+  ) with check (
+    exists (
+      select 1 from company_members m
+      where m.company_id = npc_tasks.company_id and m.user_id = auth.uid()
+    )
+  );
+
+create table if not exists npc_usage_events (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references companies(id) on delete cascade,
+  employee_id text not null,
+  success boolean not null,
+  prompt_tokens int,
+  completion_tokens int,
+  created_at timestamptz not null default now()
+);
+
+alter table npc_usage_events enable row level security;
+
+drop policy if exists "members_select_npc_usage_events" on npc_usage_events;
+drop policy if exists "members_insert_npc_usage_events" on npc_usage_events;
+
+create policy "members_select_npc_usage_events" on npc_usage_events
+  for select using (
+    exists (
+      select 1 from company_members m
+      where m.company_id = npc_usage_events.company_id and m.user_id = auth.uid()
+    )
+  );
+create policy "members_insert_npc_usage_events" on npc_usage_events
+  for insert with check (
+    exists (
+      select 1 from company_members m
+      where m.company_id = npc_usage_events.company_id and m.user_id = auth.uid()
+    )
+  );
+
+notify pgrst, 'reload schema';
+```
+
+## 필요한 설정 — 작업 문서 저장 버킷 (Supabase Storage)
+
+AI 직원의 답변을 실제 다운로드 가능한 문서로 저장하려면(아래 "가상 문서 생성" 참고) Storage 버킷과 정책이 필요합니다. Supabase 대시보드 **Storage**에서 `npc-documents`라는 이름으로 **비공개(private)** 버킷을 하나 만들고, SQL Editor에서 아래를 실행해주세요.
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('npc-documents', 'npc-documents', false)
+on conflict (id) do nothing;
+
+drop policy if exists "members_read_npc_documents" on storage.objects;
+drop policy if exists "members_write_npc_documents" on storage.objects;
+
+-- Documents are stored at "<companyId>/<employeeId>/<taskId>.txt", so the
+-- first path segment is the company id these policies check membership of.
+create policy "members_read_npc_documents" on storage.objects
+  for select using (
+    bucket_id = 'npc-documents'
+    and exists (
+      select 1 from company_members m
+      where m.user_id = auth.uid()
+        and m.company_id::text = (storage.foldername(name))[1]
+    )
+  );
+create policy "members_write_npc_documents" on storage.objects
+  for insert with check (
+    bucket_id = 'npc-documents'
+    and exists (
+      select 1 from company_members m
+      where m.user_id = auth.uid()
+        and m.company_id::text = (storage.foldername(name))[1]
+    )
+  );
+```
+
+버킷/정책을 아직 만들지 않았어도 앱은 깨지지 않습니다 — `generateDocument`가 실패하면 그 작업의 채팅 답장은 그대로 오고, "작업 이력"에 "문서 열기" 버튼만 나타나지 않습니다.
+
 ## 필요한 설정 — Edge Function 배포 (AI 직원 응답)
 
 AI 직원이 실제로 응답하려면 OpenAI API를 호출하는 서버리스 함수가 필요합니다 (`gpt-4o-mini` 모델 사용). **API 키를 앱(클라이언트) 코드에 절대 넣으면 안 되므로** Supabase Edge Function으로 프록시합니다. 코드는 이미 `supabase/functions/ask-employee/index.ts`에 준비되어 있습니다.
@@ -58,7 +175,15 @@ supabase secrets set OPENAI_API_KEY=본인의_키
 
 - `OfficeGame.tasksFor(employee)`가 그 직원에게 보낸 명령들을 `NpcTask`(명령, 상태 pending/success/error, 결과 또는 에러 메시지, 시도 횟수) 목록으로 최근 20건까지 보관합니다 — 컴퓨터 팝업의 "작업 이력" 버튼이 이 목록을 보여줍니다.
 - `askEmployee` 호출이 실패하면 한 번 자동으로 재시도하고, 그래도 실패하면 그때 비로소 직원 상태를 "오류"로 바꾸고 `NpcTask`에 시도 횟수(2)와 에러 메시지를 기록합니다. 첫 시도에서 성공하면 시도 횟수는 1로 기록됩니다.
-- 이 기록은 현재 세션 메모리에만 있고 Supabase에는 저장하지 않습니다 — 새로고침/재로그인하면 사라지며, 이미 저장되는 채팅 기록(`messages` 테이블, `is_npc`)과는 별개입니다.
+- `npc_tasks` 테이블 마이그레이션을 실행했다면, `OfficeGame`이 생성(`pending`)·해결(`success`/`error`) 시점마다 `onTaskChanged`로 그 스냅샷을 알리고 `AuthGate`가 `NpcTaskRepository.upsertTask()`로 저장합니다(실패해도 앱은 정상 동작 — best-effort). 로그인 시 `NpcTaskRepository.fetchRecentTasks()`가 최근 200건을 불러와 `OfficeGame(initialTasks: ...)`로 복원하므로, 재로그인 후에도 "작업 이력"이 이어집니다.
+
+## 가상 문서 생성 (실제 업무 수행)
+
+채팅 답장만으로는 "AI 직원이 실제로 뭔가를 만들었다"는 느낌이 없어서, 명령이 성공하면 그 결과를 텍스트 문서로도 저장합니다 — 실제 OS 파일시스템에 접근하는 건 아니고, Supabase Storage의 `npc-documents` 버킷에 `<companyId>/<employeeId>/<taskId>.txt`로 업로드되는 **가상 문서**입니다.
+
+- `OfficeGame`의 `generateDocument` 콜백(성공한 답변마다 호출)이 `NpcDocumentRepository.upload()`로 문서를 올리고 그 경로를 해당 `NpcTask.documentPath`에 기록합니다 — 채팅 답장 자체는 이 업로드가 실패해도 영향받지 않는 best-effort입니다.
+- "작업 이력" 목록에서 문서가 있는 항목에 "문서 열기" 버튼이 나타나고, 누르면 `OfficeGame.documentUrlFor()`(→ `NpcDocumentRepository.signedUrl()`, 10분 유효)로 서명된 URL을 받아 새 탭으로 엽니다.
+- 버킷/정책을 아직 설정하지 않았다면 문서 업로드가 조용히 실패하고 "문서 열기" 버튼이 나타나지 않을 뿐, 채팅 응답과 나머지 기능은 그대로 동작합니다.
 
 ## 사용량 추적 (호출 횟수 / 토큰)
 
@@ -66,12 +191,11 @@ supabase secrets set OPENAI_API_KEY=본인의_키
 - `OfficeGame`이 직원별로 `NpcUsageSummary`(호출/성공/실패 횟수, 누적 프롬프트·응답 토큰)를 누적하며, **자동 재시도로 발생한 추가 호출도 각각 하나의 실제 API 호출로 집계**합니다 — `OfficeGame.usageFor(employee)`로 직원별, `OfficeGame.totalUsage`로 전체 합계를 조회할 수 있습니다.
 - 컴퓨터 팝업이 직원 상태 아래에 "호출 N회 (성공 N · 실패 N) · N 토큰" 요약을, "작업 이력" 목록의 각 항목에는 그 호출의 토큰 수를 함께 보여줍니다.
 - 실제 비용(원화/달러 환산)까지는 계산하지 않습니다 — OpenAI 대시보드에서 모델별 단가로 직접 환산해야 합니다.
-- 이 집계도 `NpcTask`와 마찬가지로 세션 메모리에만 있고 Supabase에는 저장하지 않습니다.
-- 자동 테스트(`test/computer_popup_npc_chat_test.dart`)로 성공/실패/재시도 각각의 집계와 여러 명령에 걸친 누적을 검증했습니다.
+- `npc_usage_events` 테이블 마이그레이션을 실행했다면, `OfficeGame`이 매 시도(재시도 포함)마다 `onUsageEvent`로 알리고 `AuthGate`가 `NpcUsageRepository.recordEvent()`로 이벤트 하나씩 저장합니다. 로그인 시 `fetchUsageSummaries()`가 그 회사의 이벤트를 모두 읽어 직원별로 집계한 뒤 `OfficeGame(initialUsage: ...)`로 복원합니다 — PostgREST에 GROUP BY가 없어 집계를 클라이언트에서 계산하는 방식이라, 이벤트가 아주 많아지면(수만 건 이상) 느려질 수 있습니다(현재 최대 5000건까지 조회).
+- 자동 테스트(`test/computer_popup_npc_chat_test.dart`)로 성공/실패/재시도 각각의 집계, 여러 명령에 걸친 누적, `onTaskChanged`/`onUsageEvent`/`generateDocument`/`documentUrlFor`/초기 복원(`initialTasks`/`initialUsage`)을 모두 검증했습니다.
 
 ## 이연된 범위
 
-- AI 직원의 실제 업무 수행(파일 생성, 외부 도구 호출 등)은 이번 범위 아님 — 텍스트 응답만 제공
-- `NpcTask`/사용량 집계의 Supabase 영속화(재로그인 후에도 유지)는 이번 범위 아님
+- AI 직원이 외부 시스템을 실제로 조작(캘린더 등록, 다른 서비스 API 호출 등)하는 건 이번 범위 아님 — 텍스트 응답 + 가상 문서(Storage 업로드)까지만 제공
 - 실제 비용(통화 환산) 계산과 사용량 상한/경고는 이번 범위 아님
 - 귓속말의 DB 레벨 프라이버시(RLS)는 이번 범위 아님 — 화면에서만 숨김
