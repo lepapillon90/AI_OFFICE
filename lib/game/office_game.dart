@@ -27,6 +27,8 @@ class OfficeGame extends FlameGame
     player = OfficePlayer(
       position: playerPosition,
       onPositionChanged: _updateComputerProximity,
+      onHoverChanged: _setPlayerHovered,
+      onTap: openProfileCard,
     );
     _updateComputerProximity(player.position);
   }
@@ -37,6 +39,7 @@ class OfficeGame extends FlameGame
   final Map<String, NpcComponent> _npcsByWorkstation = {};
   ComputerInteraction? _nearbyComputer;
   bool _isComputerPopupOpen = false;
+  bool _isProfileCardOpen = false;
 
   static const _minZoom = 0.5;
   static const _maxZoom = 2.5;
@@ -73,6 +76,24 @@ class OfficeGame extends FlameGame
 
   /// Closes the computer popup and restores normal game input.
   void closeComputerPopup() => _setComputerPopupOpen(false);
+
+  /// Whether the player's profile card is currently open.
+  bool get isProfileCardOpen => _isProfileCardOpen;
+
+  /// Opens the player's profile card (avatar preview, name, role, status).
+  void openProfileCard() {
+    if (_isComputerPopupOpen) {
+      return;
+    }
+    _isProfileCardOpen = true;
+    notifyListeners();
+  }
+
+  /// Closes the player's profile card.
+  void closeProfileCard() {
+    _isProfileCardOpen = false;
+    notifyListeners();
+  }
 
   /// Applies edited roster data for one AI employee (name, role, status).
   /// Intended for use by an owner/HR-manager admin panel.
@@ -154,6 +175,10 @@ class OfficeGame extends FlameGame
     }
     _nearbyComputer = nearby;
     notifyListeners();
+  }
+
+  void _setPlayerHovered(bool hovered) {
+    mouseCursor = hovered ? SystemMouseCursors.click : MouseCursor.defer;
   }
 
   void _setComputerPopupOpen(bool value) {

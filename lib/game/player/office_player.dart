@@ -3,15 +3,19 @@ import 'package:ai_office/game/name_tag_component.dart';
 import 'package:ai_office/game/player/player_profile.dart';
 import 'package:ai_office/game/player/player_status.dart';
 import 'package:flame/components.dart';
+import 'package:flame/events.dart';
 import 'package:flutter/services.dart';
 
 typedef PositionChanged = void Function(Vector2 position);
 
 /// A keyboard-controlled office worker that remains inside the walkable map.
-class OfficePlayer extends SpriteComponent with KeyboardHandler {
+class OfficePlayer extends SpriteComponent
+    with KeyboardHandler, HoverCallbacks, TapCallbacks {
   OfficePlayer({
     Vector2? position,
     this.onPositionChanged,
+    this.onHoverChanged,
+    this.onTap,
     PlayerProfile profile = PlayerProfile.initial,
   })  : _profile = profile,
         super(
@@ -26,6 +30,13 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
   }) : this(position: position, onPositionChanged: onPositionChanged);
 
   final PositionChanged? onPositionChanged;
+
+  /// Called when the mouse starts or stops hovering over the player, so the
+  /// game can switch the cursor to a pointer.
+  final ValueChanged<bool>? onHoverChanged;
+
+  /// Called when the player character is clicked, to open their profile card.
+  final VoidCallback? onTap;
 
   static final _hitboxSize = OfficeLayout.characterSize;
   static const _speed = 180.0;
@@ -74,6 +85,15 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
       role: updated.role,
     );
   }
+
+  @override
+  void onHoverEnter() => onHoverChanged?.call(true);
+
+  @override
+  void onHoverExit() => onHoverChanged?.call(false);
+
+  @override
+  void onTapDown(TapDownEvent event) => onTap?.call();
 
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {

@@ -1,5 +1,6 @@
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/computer_popup.dart';
+import 'package:ai_office/screens/profile_card.dart';
 import 'package:ai_office/screens/roster_editor_dialog.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,7 @@ class OfficeScreen extends StatelessWidget {
                 employee: officeGame.nearbyEmployee!,
                 onClose: officeGame.closeComputerPopup,
               ),
+            if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
           ],
         ),
       ),
