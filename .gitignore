@@ -8,6 +8,7 @@ build/
 out/
 coverage/
 .worktrees/
+.dart_tool/
 
 # Operating-system and editor files
 .DS_Store
