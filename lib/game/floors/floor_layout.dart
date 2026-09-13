@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:ai_office/game/floors/floor.dart';
+import 'package:ai_office/game/isometric/iso_lobby_layout.dart';
 import 'package:ai_office/game/map/office_layout.dart';
 import 'package:flame/components.dart';
 
@@ -36,15 +37,7 @@ abstract final class FloorLayouts {
 
   static final Vector2 _smallFloorSize = Vector2(640, 448);
 
-  static final FloorLayout lobby = FloorLayout(
-    worldSize: _smallFloorSize.clone(),
-    blockers: [
-      ...FloorLayout.perimeterWalls(_smallFloorSize),
-      // Reception desk.
-      const Rect.fromLTWH(288, 96, 64, 64),
-    ],
-    elevatorPosition: elevatorPosition.clone(),
-  );
+  static final FloorLayout lobby = IsoLobbyLayout.floorLayout;
 
   static final FloorLayout workspace = FloorLayout(
     worldSize: OfficeLayout.worldSize.clone(),
