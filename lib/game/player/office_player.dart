@@ -1,4 +1,7 @@
 import 'package:ai_office/game/map/office_layout.dart';
+import 'package:ai_office/game/name_tag_component.dart';
+import 'package:ai_office/game/player/player_profile.dart';
+import 'package:ai_office/game/player/player_status.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/services.dart';
 
@@ -6,8 +9,12 @@ typedef PositionChanged = void Function(Vector2 position);
 
 /// A keyboard-controlled office worker that remains inside the walkable map.
 class OfficePlayer extends SpriteComponent with KeyboardHandler {
-  OfficePlayer({Vector2? position, this.onPositionChanged})
-      : super(
+  OfficePlayer({
+    Vector2? position,
+    this.onPositionChanged,
+    PlayerProfile profile = PlayerProfile.initial,
+  })  : _profile = profile,
+        super(
           position: position ?? OfficeLayout.worldSize.clone() / 2,
           size: _hitboxSize.clone(),
           anchor: Anchor.center,
@@ -22,6 +29,12 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
 
   static final _hitboxSize = OfficeLayout.characterSize;
   static const _speed = 180.0;
+
+  PlayerProfile _profile;
+  late final NameTagComponent _nameTag;
+
+  /// The player's current name, role, and presence status.
+  PlayerProfile get profile => _profile;
 
   Vector2 _direction = Vector2.zero();
   bool _movementEnabled = true;
@@ -39,6 +52,26 @@ class OfficePlayer extends SpriteComponent with KeyboardHandler {
     sprite = await Sprite.load(
       'characters/office_worker.png',
       srcSize: Vector2.all(64),
+    );
+
+    _nameTag = NameTagComponent(
+      badgeLabel: _profile.status.displayLabel,
+      badgeColor: _profile.status.displayColor,
+      name: _profile.name,
+      role: _profile.role,
+      characterWidth: size.x,
+    );
+    await add(_nameTag);
+  }
+
+  /// Applies edited profile data (name, role, status) to the player.
+  void updateProfile(PlayerProfile updated) {
+    _profile = updated;
+    _nameTag.applyChanges(
+      badgeLabel: updated.status.displayLabel,
+      badgeColor: updated.status.displayColor,
+      name: updated.name,
+      role: updated.role,
     );
   }
 

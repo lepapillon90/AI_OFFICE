@@ -6,6 +6,7 @@ import 'package:ai_office/game/npc/npc_component.dart';
 import 'package:ai_office/game/npc/sample_employees.dart';
 import 'package:ai_office/game/npc/workstation.dart';
 import 'package:ai_office/game/player/office_player.dart';
+import 'package:ai_office/game/player/player_profile.dart';
 import 'package:flame/events.dart';
 import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
@@ -21,6 +22,7 @@ class OfficeGame extends FlameGame
       : this._(playerPosition: playerPosition);
 
   OfficeGame._({required Vector2 playerPosition}) {
+    _employees = List.of(sampleEmployees);
     computers = _buildComputers();
     player = OfficePlayer(
       position: playerPosition,
@@ -31,12 +33,20 @@ class OfficeGame extends FlameGame
 
   late final OfficePlayer player;
   late final List<ComputerInteraction> computers;
+  late List<AiEmployee> _employees;
+  final Map<String, NpcComponent> _npcsByWorkstation = {};
   ComputerInteraction? _nearbyComputer;
   bool _isComputerPopupOpen = false;
 
   static const _minZoom = 0.5;
   static const _maxZoom = 2.5;
   static const _zoomStep = 0.1;
+
+  /// The current AI employee roster, keyed by workstation.
+  List<AiEmployee> get employees => List.unmodifiable(_employees);
+
+  /// The player's current name, role, and presence status.
+  PlayerProfile get playerProfile => player.profile;
 
   /// Whether the computer interaction state is currently open.
   bool get isComputerPopupOpen => _isComputerPopupOpen;
@@ -46,7 +56,13 @@ class OfficeGame extends FlameGame
 
   /// The AI employee assigned to the computer the player is currently near,
   /// or that the open popup refers to.
-  AiEmployee? get nearbyEmployee => _nearbyComputer?.employee;
+  AiEmployee? get nearbyEmployee {
+    final workstationId = _nearbyComputer?.workstationId;
+    if (workstationId == null) {
+      return null;
+    }
+    return _employeeFor(workstationId);
+  }
 
   /// Opens the computer popup when the player is in interaction range.
   void openComputerPopup() {
@@ -58,13 +74,31 @@ class OfficeGame extends FlameGame
   /// Closes the computer popup and restores normal game input.
   void closeComputerPopup() => _setComputerPopupOpen(false);
 
+  /// Applies edited roster data for one AI employee (name, role, status).
+  /// Intended for use by an owner/HR-manager admin panel.
+  void updateEmployee(AiEmployee updated) {
+    final index = _employees.indexWhere((e) => e.id == updated.id);
+    if (index == -1) {
+      return;
+    }
+    _employees[index] = updated;
+    _npcsByWorkstation[updated.workstationId]?.updateEmployee(updated);
+    notifyListeners();
+  }
+
+  /// Applies an edited player profile (name, role, status). Intended for use
+  /// by an owner/HR-manager admin panel.
+  void updatePlayerProfile(PlayerProfile updated) {
+    player.updateProfile(updated);
+    notifyListeners();
+  }
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
 
-    await world.addAll(
-      [OfficeMap(), ...computers, player, ..._buildNpcs()],
-    );
+    final npcs = _buildNpcs();
+    await world.addAll([OfficeMap(), ...computers, player, ...npcs]);
     camera.setBounds(
       Rectangle.fromLTWH(
         0,
@@ -104,6 +138,9 @@ class OfficeGame extends FlameGame
     return super.onKeyEvent(event, keysPressed);
   }
 
+  AiEmployee _employeeFor(String workstationId) =>
+      _employees.firstWhere((e) => e.workstationId == workstationId);
+
   void _updateComputerProximity(Vector2 playerPosition) {
     ComputerInteraction? nearby;
     for (final computer in computers) {
@@ -129,25 +166,23 @@ class OfficeGame extends FlameGame
   }
 
   List<ComputerInteraction> _buildComputers() {
-    final employeesByWorkstation = {
-      for (final employee in sampleEmployees) employee.workstationId: employee,
-    };
     return Workstation.all
         .map((workstation) => ComputerInteraction(
               position: workstation.computerPosition,
-              employee: employeesByWorkstation[workstation.id]!,
+              workstationId: workstation.id,
             ))
         .toList();
   }
 
   List<NpcComponent> _buildNpcs() {
     final workstationsById = {for (final w in Workstation.all) w.id: w};
-    return sampleEmployees
-        .map((employee) => NpcComponent(
-              employee: employee,
-              position: workstationsById[employee.workstationId]!
-                  .seatPosition,
-            ))
-        .toList();
+    return _employees.map((employee) {
+      final npc = NpcComponent(
+        employee: employee,
+        position: workstationsById[employee.workstationId]!.seatPosition,
+      );
+      _npcsByWorkstation[employee.workstationId] = npc;
+      return npc;
+    }).toList();
   }
 }

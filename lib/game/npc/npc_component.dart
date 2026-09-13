@@ -1,24 +1,29 @@
 import 'package:ai_office/game/map/office_layout.dart';
+import 'package:ai_office/game/name_tag_component.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
 import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:flame/components.dart';
-import 'package:flutter/material.dart';
 
-/// Renders a stationary AI employee NPC with a status label above its head.
+/// Renders a stationary AI employee NPC with a badge, name, and role tag
+/// above its head.
 class NpcComponent extends PositionComponent {
   NpcComponent({
-    required this.employee,
+    required AiEmployee employee,
     required Vector2 position,
-  }) : super(
+  })  : _employee = employee,
+        super(
           position: position,
           size: OfficeLayout.characterSize.clone(),
           anchor: Anchor.center,
         );
 
-  final AiEmployee employee;
+  AiEmployee _employee;
+
+  /// The AI employee currently assigned to this NPC.
+  AiEmployee get employee => _employee;
 
   late final SpriteComponent _sprite;
-  late final TextComponent _statusLabel;
+  late final NameTagComponent _nameTag;
 
   @override
   Future<void> onLoad() async {
@@ -32,21 +37,25 @@ class NpcComponent extends PositionComponent {
       size: size.clone(),
     );
 
-    _statusLabel = TextComponent(
-      text: employee.displayStatus,
-      anchor: Anchor.bottomCenter,
-      position: Vector2(size.x / 2, -4),
-      textRenderer: TextPaint(
-        style: TextStyle(
-          color: employee.status.displayColor,
-          fontFamily: 'NotoSansKR',
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          backgroundColor: Colors.black54,
-        ),
-      ),
+    _nameTag = NameTagComponent(
+      badgeLabel: _employee.displayStatus,
+      badgeColor: _employee.status.displayColor,
+      name: _employee.name,
+      role: _employee.role,
+      characterWidth: size.x,
     );
 
-    await addAll([_sprite, _statusLabel]);
+    await addAll([_sprite, _nameTag]);
+  }
+
+  /// Applies edited employee data (name, role, status) to this NPC.
+  void updateEmployee(AiEmployee updated) {
+    _employee = updated;
+    _nameTag.applyChanges(
+      badgeLabel: updated.displayStatus,
+      badgeColor: updated.status.displayColor,
+      name: updated.name,
+      role: updated.role,
+    );
   }
 }

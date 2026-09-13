@@ -1,25 +1,14 @@
 import 'package:ai_office/game/interactions/computer_interaction.dart';
-import 'package:ai_office/game/npc/ai_employee.dart';
-import 'package:ai_office/game/npc/npc_status.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _testEmployee = AiEmployee(
-  id: 'ai-test',
-  name: '테스트 직원',
-  role: '개발자',
-  provider: 'anthropic',
-  workstationId: 'desk-1',
-  status: NpcStatus.idle,
-);
-
 void main() {
   test('marks a player near only inside the computer interaction radius', () {
     final interaction = ComputerInteraction(
       position: Vector2(400, 350),
-      employee: _testEmployee,
+      workstationId: 'desk-1',
     );
 
     expect(interaction.isPlayerNearby(Vector2(430, 350)), isTrue);
