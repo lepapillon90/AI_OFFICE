@@ -31,6 +31,53 @@ void main() {
       expect(reply.isNpc, isTrue);
     });
 
+    test('"터미널 열어서 claude 실행해줘" runs open_terminal_claude', () async {
+      RemoteCommandType? calledType;
+      final game = OfficeGame(
+        requestRemoteCommand: (type, params, machineKey) async {
+          calledType = type;
+          return '터미널을 열고 Claude CLI를 실행했습니다.';
+        },
+      );
+
+      game.sendChatMessage('@서버 터미널 열어서 claude 실행해줘');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calledType, RemoteCommandType.openTerminalClaude);
+    });
+
+    test('"클로드 터미널 열어줘" (Korean transliteration) also runs '
+        'open_terminal_claude', () async {
+      RemoteCommandType? calledType;
+      final game = OfficeGame(
+        requestRemoteCommand: (type, params, machineKey) async {
+          calledType = type;
+          return 'ok';
+        },
+      );
+
+      game.sendChatMessage('@서버 클로드 터미널 열어줘');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calledType, RemoteCommandType.openTerminalClaude);
+    });
+
+    test('"터미널 열어줘" without any claude mention still runs plain '
+        'open_terminal', () async {
+      RemoteCommandType? calledType;
+      final game = OfficeGame(
+        requestRemoteCommand: (type, params, machineKey) async {
+          calledType = type;
+          return 'ok';
+        },
+      );
+
+      game.sendChatMessage('@서버 터미널 열어줘');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calledType, RemoteCommandType.openTerminal);
+    });
+
     test('"OOO 폴더 만들어줘" runs create_folder with the extracted name',
         () async {
       RemoteCommandType? calledType;

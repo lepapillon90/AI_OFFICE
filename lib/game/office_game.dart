@@ -1224,6 +1224,13 @@ class OfficeGame extends FlameGame
   (RemoteCommandType, Map<String, dynamic>)? _parseRemoteCommand(String text) {
     final trimmed = text.trim();
     if (trimmed.contains('터미널')) {
+      final lower = trimmed.toLowerCase();
+      if (lower.contains('claude') || trimmed.contains('클로드')) {
+        return (
+          RemoteCommandType.openTerminalClaude,
+          const <String, dynamic>{},
+        );
+      }
       return (RemoteCommandType.openTerminal, const <String, dynamic>{});
     }
     if (trimmed.contains('폴더')) {

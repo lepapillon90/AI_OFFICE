@@ -143,6 +143,9 @@ class RemoteAgent {
         case 'open_terminal':
           result = await _openTerminal();
           status = 'done';
+        case 'open_terminal_claude':
+          result = await _openTerminal(runClaude: true);
+          status = 'done';
         case 'create_folder':
           result = await _createFolder(params['name'] as String? ?? '');
           status = 'done';
@@ -158,28 +161,47 @@ class RemoteAgent {
     await _updateResult(id, status: status, result: result);
   }
 
-  Future<String> _openTerminal() async {
+  /// Opens a terminal, optionally running the `claude` CLI inside it
+  /// (`open_terminal_claude`) — still one specific, named program, not an
+  /// arbitrary command string carried in from chat; there is no path from
+  /// a chat message to an arbitrary shell command.
+  Future<String> _openTerminal({bool runClaude = false}) async {
     if (Platform.isWindows) {
       // `start` is a cmd builtin, not its own executable — has to run
       // through cmd /c. The empty string is the window-title argument
       // `start` expects before the actual command; Dart quotes it as `""`
       // on the generated command line, which is what `start` needs to not
-      // mistake `cmd` itself for the title.
+      // mistake `cmd` itself for the title. `/k claude` (rather than /c)
+      // keeps the new window open running the CLI instead of closing the
+      // instant it launches.
       await Process.start(
         'cmd',
-        ['/c', 'start', '', 'cmd'],
+        runClaude
+            ? ['/c', 'start', '', 'cmd', '/k', 'claude']
+            : ['/c', 'start', '', 'cmd'],
         mode: ProcessStartMode.detached,
       );
-      return '터미널을 열었습니다.';
+      return runClaude ? '터미널을 열고 Claude CLI를 실행했습니다.' : '터미널을 열었습니다.';
     }
     if (Platform.isMacOS) {
+      if (runClaude) {
+        await Process.start(
+          'osascript',
+          ['-e', 'tell application "Terminal" to do script "claude"'],
+          mode: ProcessStartMode.detached,
+        );
+        return '터미널을 열고 Claude CLI를 실행했습니다.';
+      }
       await Process.start('open', ['-a', 'Terminal'],
           mode: ProcessStartMode.detached);
       return '터미널을 열었습니다.';
     }
-    await Process.start('x-terminal-emulator', [],
-        mode: ProcessStartMode.detached);
-    return '터미널을 열었습니다.';
+    await Process.start(
+      'x-terminal-emulator',
+      runClaude ? ['-e', 'claude'] : const [],
+      mode: ProcessStartMode.detached,
+    );
+    return runClaude ? '터미널을 열고 Claude CLI를 실행했습니다.' : '터미널을 열었습니다.';
   }
 
   Future<String> _createFolder(String rawName) async {

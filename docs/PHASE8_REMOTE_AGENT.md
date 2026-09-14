@@ -9,7 +9,7 @@
 
 체크박스를 켜지 않은 직원에게는 이 기능이 전혀 적용되지 않습니다 — "터미널"/"폴더" 같은 단어가 든 평범한 업무 요청("@하나 발표자료 폴더에 정리해줘")도 그대로 AI 직원의 LLM 대화로만 처리됩니다.
 
-**보안 설계**: 채팅 메시지가 임의의 셸 명령으로 그대로 실행되지 않습니다 — 에이전트가 수행할 수 있는 작업은 미리 정해진 화이트리스트(`open_terminal`, `create_folder`) 뿐이고, 그 외의 말은 "지원하지 않는 명령"으로 거절됩니다. 또한 컴퓨터 연결은 직원 단위로 명시적으로 켜야만(옵트인) 적용됩니다.
+**보안 설계**: 채팅 메시지가 임의의 셸 명령으로 그대로 실행되지 않습니다 — 에이전트가 수행할 수 있는 작업은 미리 정해진 화이트리스트(`open_terminal`, `create_folder`, `open_terminal_claude`) 뿐이고, 그 외의 말은 "지원하지 않는 명령"으로 거절됩니다. `open_terminal_claude`도 채팅 문장을 그대로 실행하는 게 아니라 정확히 `claude` CLI 하나만 실행하도록 고정돼 있습니다 — 채팅에서 임의의 프로그램/명령을 지정할 수 있는 경로는 없습니다. 또한 컴퓨터 연결은 직원 단위로 명시적으로 켜야만(옵트인) 적용됩니다.
 
 ## 동작 방식
 
@@ -28,7 +28,7 @@ create table if not exists remote_commands (
   company_id uuid not null references companies(id) on delete cascade,
   requested_by uuid not null references auth.users(id),
   requested_by_name text not null,
-  command_type text not null check (command_type in ('open_terminal', 'create_folder')),
+  command_type text not null check (command_type in ('open_terminal', 'create_folder', 'open_terminal_claude')),
   params jsonb not null default '{}'::jsonb,
   status text not null default 'pending' check (status in ('pending', 'done', 'failed')),
   result text,
@@ -43,6 +43,12 @@ create table if not exists remote_commands (
 );
 
 alter table remote_commands add column if not exists machine_key text;
+
+-- 이미 테이블이 있던 경우(위 create table은 no-op) 체크 제약을 다시 만들어
+-- open_terminal_claude까지 허용하도록 넓힘.
+alter table remote_commands drop constraint if exists remote_commands_command_type_check;
+alter table remote_commands add constraint remote_commands_command_type_check
+  check (command_type in ('open_terminal', 'create_folder', 'open_terminal_claude'));
 
 alter table remote_commands enable row level security;
 
@@ -112,7 +118,7 @@ dart run bin/remote_agent.dart --company-id <회사 ID> --service-key <서비스
 - `--agent-key`(선택): 특정 직원의 컴퓨터를 담당하게 할 때만 지정 — 그 직원의 `workstationId`("직원 정보 관리"(화면 우측 상단 배지 🪪 아이콘 — 관리자 화면과는 다른 별도 팝업)에서 직원 이름 위에 작게 표시됨, 예: `desk-1`, `project-desk-1`)를 그대로 넣으면 됨. 생략하면 `@서버` 명령만 처리하는 기본 컴퓨터가 됨. 컴퓨터 한 대 = 에이전트 프로세스 한 개(한 `--agent-key`)
 - 환경 변수로도 전달 가능: `SUPABASE_SERVICE_ROLE_KEY`, `AI_OFFICE_COMPANY_ID`, `AI_OFFICE_AGENT_KEY`, `SUPABASE_URL`(기본값은 이 프로젝트의 URL)
 - 5초 간격으로 자기 담당의 `pending` 명령을 폴링(Realtime WebSocket 없이 단순 HTTPS 요청만 사용 — 패키지 의존성을 늘리지 않기 위한 선택으로, 이 용도엔 몇 초 지연이 문제되지 않음)
-- Windows에서 `open_terminal`은 새 `cmd` 창을 엶(`start cmd`), `create_folder`는 그 컴퓨터의 바탕화면(`%USERPROFILE%\Desktop`) 아래에 폴더를 만듦 — 이름에 경로 구분자(`/`, `\`)나 `..`가 섞여 있으면 상위 폴더 탈출 방지를 위해 거절
+- Windows에서 `open_terminal`은 새 `cmd` 창을 엶(`start cmd`), `open_terminal_claude`는 그 창에서 곧바로 `claude` CLI를 실행(`cmd /k claude` — 창이 닫히지 않고 CLI가 계속 떠 있음), `create_folder`는 그 컴퓨터의 바탕화면(`%USERPROFILE%\Desktop`) 아래에 폴더를 만듦 — 이름에 경로 구분자(`/`, `\`)나 `..`가 섞여 있으면 상위 폴더 탈출 방지를 위해 거절
 - 콘솔에 처리 로그를 출력 — 터미널을 닫으면 그 컴퓨터를 담당하던 에이전트도 멈추므로(작업 스케줄러/서비스 등록으로 상시 실행하는 것은 이번 범위 밖), 꺼지면 그 컴퓨터로 가는 명령은 "응답하지 않습니다" 타임아웃 메시지로 안내됨(다른 컴퓨터의 에이전트는 영향 없음)
 
 ## 직원을 컴퓨터와 연결하기
@@ -127,6 +133,7 @@ dart run bin/remote_agent.dart --company-id <회사 ID> --service-key <서비스
 - `@서버 보고서 폴더 만들어줘` → 기본 컴퓨터 바탕화면에 "보고서" 폴더 생성
 - `@서버 바탕화면에 기획안 폴더 만들어줘` → 위와 동일(부가 표현은 무시하고 이름만 추출)
 - `@도윤 터미널 열어줘` → 도윤이 컴퓨터 연결되어 있다면, 도윤 자리 컴퓨터에 터미널을 엶
+- `@하윤 터미널 열어서 claude 실행해줘` / `@하윤 클로드 터미널 열어줘` → "터미널"과 함께 "claude"(영문, 대소문자 무관) 또는 "클로드"가 들어가면 터미널을 열면서 그 안에서 곧바로 `claude` CLI까지 실행 — claude 언급이 없으면 그냥 빈 터미널만 열림
 - 위 형태에 해당하지 않는 말(연결 안 된 직원에게 보낸 말 포함)은 "지원하지 않는 명령이에요" 안내만 나가거나(`@서버`), 평소처럼 AI 직원의 대답으로 처리됨(연결 안 된 직원)
 
 ## 이연된 범위
