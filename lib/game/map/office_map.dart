@@ -58,9 +58,7 @@ class OfficeMap extends PositionComponent {
   // Every workspace-floor tile shares one asset ('tiles/floor/floor_00.png')
   // across a 24x16 grid (384 tiles) — mounting that many separate
   // SpriteComponents (each with its own Sprite.load) was measurably slow to
-  // load/mount, so they're drawn from a single loaded Sprite instead. See
-  // IsoFloorTilesComponent's doc comment for the isometric lobby's version
-  // of the same fix and why it mattered (docs/STATUS.md).
+  // load/mount, so they're drawn from a single loaded Sprite instead.
   Future<void> _addFloorTiles() async {
     final maxY = OfficeLayout.worldSize.y - 32;
     final maxX = OfficeLayout.worldSize.x - 32;
