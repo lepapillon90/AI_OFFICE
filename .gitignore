@@ -14,8 +14,12 @@ coverage/
 
 # Local secrets — docs/PHASE8_REMOTE_AGENT.md's local agent config (holds
 # a Supabase service-role key in plain text; only bin/remote_agent.config.
-# example.json, the template, is committed)
+# example.json, the template, is committed). The default name is
+# remote_agent.config.json; a computer running more than one agent (e.g.
+# the default `@서버` one alongside a specific employee's) names each
+# instance's file remote_agent.<anything>.config.json via --config.
 bin/remote_agent.config.json
+bin/remote_agent.*.config.json
 
 # Operating-system and editor files
 .DS_Store

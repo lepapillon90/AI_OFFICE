@@ -13,7 +13,10 @@
 // environment variables, or a bin/remote_agent.config.json file next to
 // this script — see docs/PHASE8_REMOTE_AGENT.md. Precedence: CLI args >
 // env vars > config file, so a scheduled task can run this with no
-// arguments at all once the config file is in place.)
+// arguments at all once the config file is in place. Pass
+// --config <filename> to read a different config file next to this
+// script instead — lets one computer run more than one agent, e.g. the
+// default `@서버` one alongside a specific employee's.)
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,7 +25,11 @@ const _pollInterval = Duration(seconds: 5);
 
 Future<void> main(List<String> args) async {
   final options = _parseArgs(args);
-  final config = _readConfigFile();
+  // Lets one physical computer run more than one agent (e.g. the default
+  // `@서버` agent alongside a specific employee's) via separate config
+  // files and separate scheduled tasks — see
+  // scripts/install_remote_agent_task.ps1's -ConfigFile parameter.
+  final config = _readConfigFile(options['config']);
   final supabaseUrl = options['url'] ??
       Platform.environment['SUPABASE_URL'] ??
       config['supabaseUrl'] as String? ??
@@ -89,15 +96,19 @@ Map<String, String> _parseArgs(List<String> args) {
   return result;
 }
 
-/// Reads `bin/remote_agent.config.json` (next to this script, resolved via
-/// [Platform.script] so it works regardless of the working directory a
-/// scheduled task launches from) if present — lets a scheduled task run
-/// this agent with no command-line arguments at all, so the service-role
-/// key never needs to sit in that task's own stored settings. Never
-/// committed (see .gitignore) since it holds that secret in plain text;
-/// docs/PHASE8_REMOTE_AGENT.md documents its shape.
-Map<String, dynamic> _readConfigFile() {
-  final path = Platform.script.resolve('remote_agent.config.json').toFilePath();
+/// Reads a config file (default `bin/remote_agent.config.json`, next to
+/// this script, resolved via [Platform.script] so it works regardless of
+/// the working directory a scheduled task launches from — or
+/// [fileNameOverride] when one physical computer runs more than one
+/// agent, each with its own file) if present — lets a scheduled task run
+/// this agent with no other command-line arguments at all, so the
+/// service-role key never needs to sit in that task's own stored
+/// settings. Never committed (see .gitignore) since it holds that secret
+/// in plain text; docs/PHASE8_REMOTE_AGENT.md documents its shape.
+Map<String, dynamic> _readConfigFile(String? fileNameOverride) {
+  final path = Platform.script
+      .resolve(fileNameOverride ?? 'remote_agent.config.json')
+      .toFilePath();
   final file = File(path);
   if (!file.existsSync()) {
     return const {};

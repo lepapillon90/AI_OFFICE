@@ -222,6 +222,29 @@ dart run bin/remote_agent.dart --company-id <회사 ID> --service-key <서비스
 3. 지금 바로 시작해보려면: `Start-ScheduledTask -TaskName "AI Office Remote Agent"`
 4. 제거하려면: `powershell -ExecutionPolicy Bypass -File scripts\uninstall_remote_agent_task.ps1`
 
+`Register-ScheduledTask`가 "액세스가 거부되었습니다"로 실패하면, PowerShell을 **관리자 권한으로 실행**해서 다시 시도해주세요(일부 Windows 환경에서는 로그온 트리거 작업 등록에도 관리자 권한이 필요합니다).
+
+### 한 컴퓨터에서 여러 에이전트 실행하기
+
+컴퓨터 한 대에 사람이 앉아 있지 않거나, 기본 컴퓨터(`@서버`)와 특정 직원의 컴퓨터를 **같은 컴퓨터**에서 같이 돌리고 싶다면, config 파일과 예약 작업 이름을 다르게 줘서 여러 개 등록할 수 있습니다:
+
+```powershell
+# 두 번째 config 파일 (예: 기본 컴퓨터용 — agentKey 줄 없이)
+@'
+{
+  "companyId": "회사 ID",
+  "serviceKey": "서비스 롤 키"
+}
+'@ | Out-File -FilePath bin\remote_agent.default.config.json -Encoding utf8
+
+# -TaskName과 -ConfigFile을 다르게 줘서 두 번째 예약 작업 등록
+powershell -ExecutionPolicy Bypass -File scripts\install_remote_agent_task.ps1 `
+  -TaskName "AI Office Remote Agent (기본 컴퓨터)" `
+  -ConfigFile "remote_agent.default.config.json"
+```
+
+`bin/remote_agent.dart`는 `--config <파일명>`을 받아 그 파일을 읽습니다(생략하면 기본값 `remote_agent.config.json`) — 설치 스크립트가 이걸 자동으로 넘겨줍니다. config 파일 이름은 `bin/remote_agent.*.config.json` 패턴이면 `.gitignore`에 이미 걸려 커밋되지 않습니다.
+
 macOS/Linux는 이번 범위 밖입니다 — `cron`의 `@reboot`이나 `launchd`/`systemd` 서비스로 비슷하게 만들 수 있지만, 스크립트로 제공하지는 않습니다.
 
 ## 직원을 컴퓨터와 연결하기
@@ -243,6 +266,7 @@ macOS/Linux는 이번 범위 밖입니다 — `cron`의 `@reboot`이나 `launchd
 잠금을 해제하면 서버기계 팝업에 **"서버 실행"/"서버 종료"** 버튼이 나타납니다.
 
 - 에이전트 프로세스 자체는 (예: 위 "자동 시작"으로) 그 컴퓨터에서 항상 실행 중일 수 있지만, 실제로 `pending` 명령을 처리하는 건 이 스위치가 **"실행"** 상태일 때뿐입니다 — 꺼져 있으면 에이전트가 명령을 곧바로 `failed`로 표시하고 "서버가 꺼져 있습니다" 안내만 돌려줍니다(터미널을 열거나 폴더를 만드는 등 실제 동작은 전혀 하지 않음)
+- **`server_control`은 컴퓨터별이 아니라 회사 하나당 값 하나**입니다 — `@서버`(기본 컴퓨터)만이 아니라, 직원별로 연결된 모든 컴퓨터의 에이전트가 전부 이 같은 스위치를 확인합니다. 즉 서버기계에서 한 번 끄면 하윤·도윤 등 컴퓨터 연결된 모든 직원의 명령도 같이 멈추고, 켜면 전부 다시 처리됩니다 — 컴퓨터별 개별 스위치가 아니라 **회사 전체 공용 스위치 하나**입니다
 - 비밀번호와 달리 이건 **보안 경계가 아니라 전원 버튼**이라, 잠금을 해제한 회사 구성원 누구나 켜고 끌 수 있고, 회사 전체가 공유하는 상태입니다(한 사람이 켜면 다른 사람도 바로 그 상태로 씀) — 다만 이 클라이언트는 그 상태를 실시간으로 동기화하지 않으므로, 다른 사람이 방금 바꾼 상태는 서버기계 팝업을 다시 열어야 반영됩니다
 - 브라우저는 실제 컴퓨터의 프로세스를 켜거나 끌 수 없으므로(그래서 애초에 별도 에이전트가 필요했던 것과 같은 이유), 이 버튼이 하는 일은 "에이전트를 실행시키는 것"이 아니라 "이미 실행 중인 에이전트에게 처리를 허락/보류시키는 것"입니다 — 에이전트 프로세스 자체가 꺼져 있다면(예: 컴퓨터가 꺼져 있거나 예약 작업이 등록 안 된 경우) 이 스위치를 켜도 아무 일도 일어나지 않고, 45초 뒤 평소처럼 "응답하지 않습니다" 타임아웃 안내가 나갑니다
 
