@@ -41,6 +41,17 @@ class _ChatPanelState extends State<ChatPanel> {
   String? _selectedRoomKey;
   String? _selectedRoomName;
 
+  // How many messages were in each list the last time build() ran — lets
+  // _autoScrollIfNewMessages tell "a message arrived" (any source: sent
+  // here, a whisper from someone else, an AI reply resolving later, a
+  // switch to a room with unseen history) apart from an unrelated rebuild
+  // (e.g. OfficeGame notifying for player movement), which must NOT yank
+  // the scroll position back to the bottom while someone's reading older
+  // messages.
+  int _lastPublicCount = 0;
+  int _lastRoomCount = 0;
+  String? _lastRoomCountKey;
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +111,10 @@ class _ChatPanelState extends State<ChatPanel> {
     );
   }
 
+  // Scrolling to the newly-sent message itself is handled centrally by
+  // _autoScrollIfNewMessages (called from build(), since sending is just
+  // one of several ways the list can grow) — neither of these need to
+  // schedule their own scroll.
   void _send() {
     var text = _controller.text;
     final roomName = _selectedRoomName;
@@ -108,13 +123,6 @@ class _ChatPanelState extends State<ChatPanel> {
     }
     widget.game.sendChatMessage(text);
     _controller.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final controller =
-          _tabIndex == 0 ? _publicScrollController : _roomScrollController;
-      if (controller.hasClients) {
-        controller.jumpTo(controller.position.maxScrollExtent);
-      }
-    });
   }
 
   Future<void> _attachFile() async {
@@ -127,13 +135,6 @@ class _ChatPanelState extends State<ChatPanel> {
       bytes: picked.bytes,
       toRoomName: _selectedRoomName,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final controller =
-          _tabIndex == 0 ? _publicScrollController : _roomScrollController;
-      if (controller.hasClients) {
-        controller.jumpTo(controller.position.maxScrollExtent);
-      }
-    });
   }
 
   Future<void> _openAttachment(ChatMessage message) async {
@@ -171,6 +172,43 @@ class _ChatPanelState extends State<ChatPanel> {
       _selectedRoomName = name;
     });
     _inputFocusNode.requestFocus();
+  }
+
+  /// Scrolls the currently visible list to the bottom whenever it grew
+  /// since the last build — covers every source of a new message (sent
+  /// here, received, an AI reply resolving later, opening a room with
+  /// history) in one place, unlike relying on each send-site to remember
+  /// to scroll itself (which is how this used to only work for messages
+  /// sent from this exact panel, leaving the view stuck wherever it last
+  /// was for anything else — the room list always opening scrolled to its
+  /// oldest, top message rather than the latest).
+  void _autoScrollIfNewMessages(
+    List<ChatMessage> publicMessages,
+    List<ChatMessage> roomMessages,
+  ) {
+    final publicGrew = publicMessages.length > _lastPublicCount;
+    _lastPublicCount = publicMessages.length;
+
+    // Switching rooms should itself land on the latest message (opening a
+    // room used to always start scrolled to its oldest one) — comparing
+    // counts across two different rooms would otherwise look like an
+    // arbitrary jump and scroll for the wrong reason, so a key change is
+    // its own trigger instead.
+    final roomChanged = _selectedRoomKey != _lastRoomCountKey;
+    final roomGrew = !roomChanged && roomMessages.length > _lastRoomCount;
+    _lastRoomCount = roomMessages.length;
+    _lastRoomCountKey = _selectedRoomKey;
+
+    if (!publicGrew && !roomChanged && !roomGrew) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller =
+          _tabIndex == 0 ? _publicScrollController : _roomScrollController;
+      if (controller.hasClients) {
+        controller.jumpTo(controller.position.maxScrollExtent);
+      }
+    });
   }
 
   void _backToRoomList() {
@@ -214,6 +252,8 @@ class _ChatPanelState extends State<ChatPanel> {
         : privateMessages
             .where((m) => _roomOf(m, selfUserId).key == _selectedRoomKey)
             .toList();
+
+    _autoScrollIfNewMessages(publicMessages, selectedRoomMessages);
 
     return Positioned(
       bottom: 16,
