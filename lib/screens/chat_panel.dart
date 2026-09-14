@@ -199,15 +199,40 @@ class _ChatPanelState extends State<ChatPanel> {
     _lastRoomCount = roomMessages.length;
     _lastRoomCountKey = _selectedRoomKey;
 
-    if (!publicGrew && !roomChanged && !roomGrew) {
-      return;
+    // Scrolling whichever list actually grew — rather than whichever tab
+    // happens to be showing right now — matters because IndexedStack keeps
+    // both tabs' ListViews mounted (just unpainted) the whole time: a
+    // public message landing while the room tab is open must not be
+    // dropped just because tabIndex says "room" at that moment, or it'd
+    // still be sitting unscrolled whenever the user switches back (no
+    // further growth to notice by then).
+    if (publicGrew) {
+      _scrollToBottomNextFrame(_publicScrollController);
     }
+    if (roomChanged || roomGrew) {
+      _scrollToBottomNextFrame(_roomScrollController);
+    }
+  }
+
+  /// Jumps [controller] to the bottom after this frame settles, then does
+  /// it again one frame later. One post-frame callback lands short —
+  /// visibly, at the newest message's sender line with its body clipped
+  /// off — because a lazily-built `ListView.builder`'s `maxScrollExtent`
+  /// is still an *estimate* on the very frame an item is added; it only
+  /// becomes exact once that item has actually been laid out, which
+  /// happens as a side effect of scrolling to (the estimate of) it. The
+  /// second jump corrects against the now-exact extent.
+  void _scrollToBottomNextFrame(ScrollController controller) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final controller =
-          _tabIndex == 0 ? _publicScrollController : _roomScrollController;
-      if (controller.hasClients) {
-        controller.jumpTo(controller.position.maxScrollExtent);
+      if (!controller.hasClients) {
+        return;
       }
+      controller.jumpTo(controller.position.maxScrollExtent);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (controller.hasClients) {
+          controller.jumpTo(controller.position.maxScrollExtent);
+        }
+      });
     });
   }
 

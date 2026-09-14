@@ -96,4 +96,37 @@ void main() {
     expect(controller.offset, controller.position.maxScrollExtent);
     expect(controller.offset, isNot(0));
   });
+
+  testWidgets(
+      'opening and closing an unrelated overlay (profile card) while chat '
+      'stays open does not reset the chat scroll position (regression: '
+      'ChatPanel and its overlay siblings had no Keys, so one appearing or '
+      'disappearing in the same Stack shifted every later sibling\'s index '
+      'and got its State — including scroll position — wrongly disposed '
+      'and recreated)', (tester) async {
+    final game = OfficeGame(initialChatMessages: _longPublicHistory());
+    await _openChat(tester, game);
+
+    final controller = tester.widget<ListView>(find.byType(ListView).at(0)).controller!;
+    expect(controller.offset, controller.position.maxScrollExtent);
+    controller.jumpTo(0);
+    expect(controller.offset, 0);
+
+    // ProfileCard sits earlier than ChatPanel in office_screen.dart's Stack
+    // children — opening then closing it is exactly the index-shifting
+    // scenario the Keys guard against.
+    game.openProfileCard();
+    await tester.pump();
+    game.closeProfileCard();
+    await tester.pump();
+
+    // A torn-down-and-recreated ChatPanel would hand back a brand new
+    // ScrollController — identity is the proof its State (scroll position,
+    // _lastPublicCount, everything) actually survived.
+    final sameController =
+        tester.widget<ListView>(find.byType(ListView).at(0)).controller!;
+    expect(identical(sameController, controller), isTrue,
+        reason: 'ChatPanel State (and its ScrollController) should survive '
+            'an unrelated sibling opening and closing');
+  });
 }

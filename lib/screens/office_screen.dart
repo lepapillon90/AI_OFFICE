@@ -289,30 +289,51 @@ class _OfficeScreenState extends State<OfficeScreen> {
                     ),
                   ),
                 ),
+              // Explicit keys below: these are conditional siblings in the
+              // same Stack, so whether one appears/disappears shifts every
+              // later one's *index* in this children list. Flutter's
+              // default (keyless) reconciliation matches by index, not
+              // identity — without a stable key, e.g. closing
+              // ComputerPopup while ChatPanel stays open would slide
+              // ChatPanel one slot earlier and get its State wrongly
+              // disposed/recreated (losing scroll position, the selected
+              // room, everything), even though ChatPanel itself never
+              // closed. A key makes each one keep its own State regardless
+              // of what else opens or closes around it.
               if (officeGame.isComputerPopupOpen)
                 ComputerPopup(
+                  key: const ValueKey('computer-popup'),
                   employee: officeGame.nearbyEmployee!,
                   game: officeGame,
                   onClose: officeGame.closeComputerPopup,
                 ),
               if (officeGame.isElevatorPopupOpen)
-                ElevatorPopup(game: officeGame),
+                ElevatorPopup(key: const ValueKey('elevator-popup'), game: officeGame),
               if (officeGame.isMeetingPopupOpen)
-                MeetingPanel(game: officeGame, onClose: officeGame.closeMeetingPopup),
-              if (officeGame.isProfileCardOpen) ProfileCard(game: officeGame),
-              if (officeGame.isChatOpen) ChatPanel(game: officeGame),
+                MeetingPanel(
+                  key: const ValueKey('meeting-popup'),
+                  game: officeGame,
+                  onClose: officeGame.closeMeetingPopup,
+                ),
+              if (officeGame.isProfileCardOpen)
+                ProfileCard(key: const ValueKey('profile-card'), game: officeGame),
+              if (officeGame.isChatOpen)
+                ChatPanel(key: const ValueKey('chat-panel'), game: officeGame),
               if (_isActivityPanelOpen)
                 ActivityPanel(
+                  key: const ValueKey('activity-panel'),
                   game: officeGame,
                   onClose: () => setState(() => _isActivityPanelOpen = false),
                 ),
               if (_isBoardPanelOpen)
                 BoardPanel(
+                  key: const ValueKey('board-panel'),
                   game: officeGame,
                   onClose: () => setState(() => _isBoardPanelOpen = false),
                 ),
               if (_isAdminPanelOpen && widget.companyId != null && widget.repository != null)
                 AdminPanel(
+                  key: const ValueKey('admin-panel'),
                   game: officeGame,
                   companyId: widget.companyId!,
                   repository: widget.repository!,
