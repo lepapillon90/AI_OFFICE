@@ -182,6 +182,21 @@ class CompanyRepository {
         .eq('user_id', userId);
   }
 
+  /// Removes [userId] from [companyId] entirely (not a role change — the
+  /// membership row itself is deleted) — owner only, enforced by the same
+  /// `owner_manage_members` RLS policy that already covers every write on
+  /// this table (it's declared `for all`, so no new policy is needed for
+  /// DELETE). The account itself isn't deleted, only its membership; the
+  /// caller is responsible for not targeting the owner's own row (see
+  /// AdminPanel, which never shows a remove button for the owner).
+  Future<void> removeMember(String companyId, String userId) async {
+    await _client
+        .from('company_members')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('user_id', userId);
+  }
+
   /// Row for the initial seed insert — omits `id` so Postgres generates a
   /// real UUID rather than reusing the sample data's placeholder ids.
   Map<String, dynamic> _toSeedRow(String companyId, AiEmployee employee) => {

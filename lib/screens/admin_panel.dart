@@ -128,6 +128,41 @@ class _AdminPanelState extends State<AdminPanel> {
     }
   }
 
+  Future<void> _removeMember(CompanyMember member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('구성원 제거'),
+        content: Text(
+          '"${member.username}"님을 회사에서 제거하시겠어요?\n'
+          '계정 자체는 삭제되지 않고, 이 회사에서만 나가게 됩니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('제거'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    setState(() => _error = null);
+    try {
+      await widget.repository.removeMember(widget.companyId, member.userId);
+      setState(() {
+        _membersFuture = _loadMembers();
+      });
+    } catch (e) {
+      setState(() => _error = '구성원 제거에 실패했습니다: $e');
+    }
+  }
+
   void _openActivityPanel() {
     showDialog<void>(
       context: context,
@@ -242,6 +277,7 @@ class _AdminPanelState extends State<AdminPanel> {
                 itemBuilder: (_, index) => _MemberRow(
                   member: members[index],
                   onChangeRole: (role) => _changeRole(members[index], role),
+                  onRemove: () => _removeMember(members[index]),
                 ),
               );
             },
@@ -311,10 +347,19 @@ class _AdminPanelState extends State<AdminPanel> {
 }
 
 class _MemberRow extends StatelessWidget {
-  const _MemberRow({required this.member, required this.onChangeRole});
+  const _MemberRow({
+    required this.member,
+    required this.onChangeRole,
+    required this.onRemove,
+  });
 
   final CompanyMember member;
   final void Function(CompanyRole role) onChangeRole;
+
+  /// Never invoked for the owner's own row — see build(), which omits the
+  /// button entirely there (removing the owner would leave the company
+  /// without one).
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -327,7 +372,7 @@ class _MemberRow extends StatelessWidget {
           ),
           if (member.role == CompanyRole.owner)
             const Text('대표', style: TextStyle(color: Colors.white38))
-          else
+          else ...[
             DropdownButton<CompanyRole>(
               value: member.role,
               dropdownColor: const Color(0xFF23303C),
@@ -349,6 +394,14 @@ class _MemberRow extends StatelessWidget {
                 }
               },
             ),
+            IconButton(
+              tooltip: '구성원 제거',
+              iconSize: 18,
+              color: Colors.white38,
+              onPressed: onRemove,
+              icon: const Icon(Icons.person_remove_outlined),
+            ),
+          ],
         ],
       );
 }

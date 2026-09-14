@@ -130,6 +130,16 @@
   - `messages` 테이블에 `attachment_path`/`attachment_name` 컬럼 추가 필요(마이그레이션 SQL은 `docs/PHASE8_FILE_SHARING.md`) — 실행 전엔 업로드가 조용히 실패할 뿐 텍스트 채팅은 정상 동작
   - 자동 테스트(`test/chat_attachment_test.dart`)로 업로드 성공/실패/미설정, AI 방 오발송 방지, URL 해석 전부 검증 — 실제 `dart:html` 파일 선택창 자체는 `flutter test`의 VM에서 재현 불가해 실제 브라우저 확인 권장
   - 이연: AI 직원이 첨부 파일 내용을 실제로 읽는 기능, 이미지 미리보기, 업무 보드 카드 첨부
+- **Phase 8 — 외부 서비스 연동(Slack 웹훅)** (`docs/PHASE8_SLACK.md`)
+  - 관리자 화면에 대표 전용 Slack 웹훅 URL 설정 UI(`AdminPanel`) 추가 — `company_integrations` 테이블에 저장/조회(RLS로 대표만 읽기/쓰기), 실제 Slack 호출은 새 Edge Function `notify-slack`이 서버 사이드에서 수행(웹훅 URL 자체가 베어러 토큰과 동급 비밀값이라 클라이언트에서 직접 POST하지 않음)
+  - `OfficeGame._logActivity`가 모든 활동 기록 이벤트마다 `notifySlack` 콜백을 fire-and-forget으로 호출(전송 실패해도 활동 기록 자체엔 영향 없음, `unawaited(...).catchError((_) {})`) — 웹훅 미설정 시 함수가 `{skipped:true}`로 조용히 무시
+  - 자동 테스트(`test/notify_slack_test.dart`)로 전달·미설정 시 no-op·전송 실패가 활동 기록에 영향 없음을 검증, **실제 Slack 채널로 라이브 전송까지 확인 완료**
+  - 라이브 디버깅 중 발견: Edge Function을 대시보드에서 새로 만들 때 Supabase 기본 템플릿(`jsr:@supabase/server`의 `withSupabase` 래퍼) 코드가 미리 채워져 있어, 실제 코드로 완전히 교체하지 않고 그대로 배포하면 401(`INVALID_API_KEY`)로 실패 — 올바른 코드로 재배포 후 5/5 라이브 테스트 통과
+  - 라이브 검증 중 함께 고친 버그 2건: (1) 관리자 화면 Slack URL 섹션에 긴 URL을 입력하면 `BOTTOM OVERFLOWED` 발생 — `Container`의 `maxHeight` 제약만으로는 `SingleChildScrollView` 없이 진짜 스크롤이 안 되던 문제, 고정 `height` + `Expanded(SingleChildScrollView)` 구조로 수정. (2) 구성원 역할 변경 시 `setState() callback argument returned a Future` 크래시 — `setState(() => _membersFuture = _loadMembers())`가 화살표 함수라 대입식의 값(Future)이 콜백 반환값이 되어버리던 전형적인 버그, 블록 바디로 수정(DB 업데이트 자체는 항상 성공하고 있었음을 수정 전후 직접 쿼리로 확인)
+- **Phase 8 — 운영/관리 강화** (구성원 강퇴 · 감사 기록 필터/검색, `docs/PHASE7_ADMIN.md`)
+  - **구성원 강퇴**: 관리자 화면 구성원 목록에 대표 전용 "구성원 제거" 아이콘 버튼 추가(`AdminPanel._removeMember`) — 확인 다이얼로그를 거쳐 `CompanyRepository.removeMember`로 `company_members` 행만 삭제(계정 자체는 유지). 기존 `owner_manage_members` RLS 정책이 이미 DELETE까지 `for all`로 포함하고 있어 새 정책 불필요 — 실제 Node 스크립트(`test_remove_member.mjs`)로 라이브 검증: 대표는 제거 가능, hr_manager는 시도해도 행이 그대로 남음(RLS가 거절)
+  - **감사 기록 필터/검색**: `ActivityPanel`을 `StatelessWidget`에서 `StatefulWidget`으로 전환 — 유형별 필터 칩(직원/AI 명령/보드/회의/구성원)과 메시지·행위자 텍스트 검색(둘 다 AND 조합)을 이미 불러온 최근 활동 이력 안에서 클라이언트 단으로 처리(서버 쪽 페이지네이션/검색은 아님). 자동 테스트(`test/activity_panel_test.dart`) 6개로 기본 표시·유형 필터·메시지 검색·행위자 검색·필터+검색 조합·검색 해제 전부 검증
+  - 이연: 대표 역할 자체의 이전(소유권 양도)
 
 ## 다음 작업
 
