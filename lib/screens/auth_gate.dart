@@ -11,6 +11,7 @@ import 'package:ai_office/data/npc_document_repository.dart';
 import 'package:ai_office/data/npc_task_repository.dart';
 import 'package:ai_office/data/npc_usage_repository.dart';
 import 'package:ai_office/data/remote_command_repository.dart';
+import 'package:ai_office/data/server_lock_repository.dart';
 import 'package:ai_office/data/slack_integration_repository.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/board/board_task.dart';
@@ -61,6 +62,7 @@ class _LoadedSession {
     required this.multiplayer,
     required this.companyId,
     required this.slackRepository,
+    required this.serverLockRepository,
   });
 
   final OfficeGame game;
@@ -69,6 +71,7 @@ class _LoadedSession {
   final MultiplayerChannel multiplayer;
   final String companyId;
   final SlackIntegrationRepository slackRepository;
+  final ServerLockRepository serverLockRepository;
 }
 
 class _CompanyLoader extends StatefulWidget {
@@ -94,6 +97,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   final _slackRepository = SlackIntegrationRepository(Supabase.instance.client);
   final _remoteCommandRepository =
       RemoteCommandRepository(Supabase.instance.client);
+  final _serverLockRepository = ServerLockRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -122,6 +126,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       _activityRepository
           .fetchLastReadAt(companyId, Supabase.instance.client.auth.currentUser!.id)
           .catchError((_) => null),
+      _serverLockRepository.hasPassword(companyId).catchError((_) => false),
     ]);
     final role = results[0] as CompanyRole;
     final employees = results[1] as List<AiEmployee>;
@@ -131,6 +136,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     final activityHistory = results[5] as List<ActivityEvent>;
     final boardTasks = results[6] as List<BoardTask>;
     final activityReadAt = results[7] as DateTime?;
+    final hasServerPassword = results[8] as bool;
 
     final userId = Supabase.instance.client.auth.currentUser!.id;
     final multiplayer = MultiplayerChannel(
@@ -227,6 +233,12 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
         params: params,
         machineKey: machineKey,
       ),
+      verifyServerPassword: (attempt) =>
+          _serverLockRepository.verify(companyId, attempt),
+      initialServerUnlocked: !hasServerPassword,
+      checkServerRunning: () => _serverLockRepository.fetchRunning(companyId),
+      setServerRunning: (running) =>
+          _serverLockRepository.setRunning(companyId, running),
     );
 
     return _LoadedSession(
@@ -236,6 +248,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       multiplayer: multiplayer,
       companyId: companyId,
       slackRepository: _slackRepository,
+      serverLockRepository: _serverLockRepository,
     );
   }
 
@@ -274,6 +287,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
           companyId: session.companyId,
           repository: widget.repository,
           slackRepository: session.slackRepository,
+          serverLockRepository: session.serverLockRepository,
         );
       },
     );

@@ -10,7 +10,10 @@
 // Usage:
 //   dart run bin/remote_agent.dart --company-id <uuid> --service-key <key>
 // (or the SUPABASE_SERVICE_ROLE_KEY / AI_OFFICE_COMPANY_ID / SUPABASE_URL
-// environment variables — see docs/PHASE8_REMOTE_AGENT.md)
+// environment variables, or a bin/remote_agent.config.json file next to
+// this script — see docs/PHASE8_REMOTE_AGENT.md. Precedence: CLI args >
+// env vars > config file, so a scheduled task can run this with no
+// arguments at all once the config file is in place.)
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,13 +22,17 @@ const _pollInterval = Duration(seconds: 5);
 
 Future<void> main(List<String> args) async {
   final options = _parseArgs(args);
+  final config = _readConfigFile();
   final supabaseUrl = options['url'] ??
       Platform.environment['SUPABASE_URL'] ??
+      config['supabaseUrl'] as String? ??
       _defaultSupabaseUrl;
   final serviceKey = options['service-key'] ??
-      Platform.environment['SUPABASE_SERVICE_ROLE_KEY'];
-  final companyId =
-      options['company-id'] ?? Platform.environment['AI_OFFICE_COMPANY_ID'];
+      Platform.environment['SUPABASE_SERVICE_ROLE_KEY'] ??
+      config['serviceKey'] as String?;
+  final companyId = options['company-id'] ??
+      Platform.environment['AI_OFFICE_COMPANY_ID'] ??
+      config['companyId'] as String?;
   // Null = the default agent (this computer handles `@서버` commands, i.e.
   // rows with machine_key IS NULL). Set this to a specific
   // AiEmployee.workstationId (e.g. "desk-1", visible in the roster
@@ -33,8 +40,9 @@ Future<void> main(List<String> args) async {
   // commands addressed to that one employee — see
   // docs/PHASE8_REMOTE_AGENT.md's multi-computer section. One physical
   // computer runs one agent process with one (or no) --agent-key.
-  final agentKey =
-      options['agent-key'] ?? Platform.environment['AI_OFFICE_AGENT_KEY'];
+  final agentKey = options['agent-key'] ??
+      Platform.environment['AI_OFFICE_AGENT_KEY'] ??
+      config['agentKey'] as String?;
 
   if (serviceKey == null || serviceKey.isEmpty) {
     stderr.writeln(
@@ -81,6 +89,27 @@ Map<String, String> _parseArgs(List<String> args) {
   return result;
 }
 
+/// Reads `bin/remote_agent.config.json` (next to this script, resolved via
+/// [Platform.script] so it works regardless of the working directory a
+/// scheduled task launches from) if present — lets a scheduled task run
+/// this agent with no command-line arguments at all, so the service-role
+/// key never needs to sit in that task's own stored settings. Never
+/// committed (see .gitignore) since it holds that secret in plain text;
+/// docs/PHASE8_REMOTE_AGENT.md documents its shape.
+Map<String, dynamic> _readConfigFile() {
+  final path = Platform.script.resolve('remote_agent.config.json').toFilePath();
+  final file = File(path);
+  if (!file.existsSync()) {
+    return const {};
+  }
+  try {
+    return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  } catch (e) {
+    stderr.writeln('설정 파일($path)을 읽지 못했습니다: $e');
+    return const {};
+  }
+}
+
 class RemoteAgent {
   RemoteAgent({
     required this.supabaseUrl,
@@ -101,9 +130,49 @@ class RemoteAgent {
 
   Future<void> pollOnce() async {
     final pending = await _fetchPending();
+    if (pending.isEmpty) {
+      return;
+    }
+    // Checked once per poll cycle, not per command — the power switch is
+    // shared company-wide state a browser tab can flip at any time (see
+    // docs/PHASE8_REMOTE_AGENT.md's "서버 실행/종료"), so this agent
+    // process itself can stay running via the Windows scheduled task the
+    // whole time and just sit idle, only actually executing anything
+    // while the switch is on.
+    final running = await _isServerRunning();
     for (final command in pending) {
+      if (!running) {
+        await _updateResult(
+          command['id'] as String,
+          status: 'failed',
+          result: '서버가 꺼져 있습니다. 서버기계에서 "서버 실행"을 눌러주세요.',
+        );
+        continue;
+      }
       await _execute(command);
     }
+  }
+
+  Future<bool> _isServerRunning() async {
+    final uri = Uri.parse('$supabaseUrl/rest/v1/server_control').replace(
+      queryParameters: {
+        'company_id': 'eq.$companyId',
+        'select': 'running',
+      },
+    );
+    final request = await _http.getUrl(uri);
+    _addHeaders(request);
+    final response = await request.close();
+    final body = await response.transform(utf8.decoder).join();
+    if (response.statusCode != 200) {
+      stderr.writeln('서버 실행 상태 조회 실패 (${response.statusCode}): $body');
+      return false;
+    }
+    final decoded = jsonDecode(body) as List<dynamic>;
+    if (decoded.isEmpty) {
+      return false;
+    }
+    return (decoded.first as Map<String, dynamic>)['running'] as bool? ?? false;
   }
 
   Future<List<Map<String, dynamic>>> _fetchPending() async {

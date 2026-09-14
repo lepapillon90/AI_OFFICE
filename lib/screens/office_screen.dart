@@ -1,4 +1,5 @@
 import 'package:ai_office/data/company_repository.dart';
+import 'package:ai_office/data/server_lock_repository.dart';
 import 'package:ai_office/data/slack_integration_repository.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
@@ -11,6 +12,7 @@ import 'package:ai_office/screens/elevator_popup.dart';
 import 'package:ai_office/screens/meeting_panel.dart';
 import 'package:ai_office/screens/profile_card.dart';
 import 'package:ai_office/screens/roster_editor_dialog.dart';
+import 'package:ai_office/screens/server_lock_dialog.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
@@ -24,6 +26,7 @@ class OfficeScreen extends StatefulWidget {
     this.companyId,
     this.repository,
     this.slackRepository,
+    this.serverLockRepository,
     super.key,
   });
 
@@ -55,6 +58,11 @@ class OfficeScreen extends StatefulWidget {
   /// without auth (tests), which hides the admin screen's Slack section.
   final SlackIntegrationRepository? slackRepository;
 
+  /// Manages the company's server-machine password — null for callers
+  /// without auth (tests), which hides the admin screen's server lock
+  /// section.
+  final ServerLockRepository? serverLockRepository;
+
   @override
   State<OfficeScreen> createState() => _OfficeScreenState();
 }
@@ -79,6 +87,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
       _officeGame.isComputerPopupOpen ||
       _officeGame.isElevatorPopupOpen ||
       _officeGame.isMeetingPopupOpen ||
+      _officeGame.isServerLockDialogOpen ||
       _officeGame.isProfileCardOpen ||
       _officeGame.isChatOpen ||
       _isActivityPanelOpen ||
@@ -321,6 +330,12 @@ class _OfficeScreenState extends State<OfficeScreen> {
                   game: officeGame,
                   onClose: officeGame.closeMeetingPopup,
                 ),
+              if (officeGame.isServerLockDialogOpen)
+                ServerLockDialog(
+                  key: const ValueKey('server-lock-dialog'),
+                  game: officeGame,
+                  onClose: officeGame.closeServerLockDialog,
+                ),
               if (officeGame.isProfileCardOpen)
                 ProfileCard(key: const ValueKey('profile-card'), game: officeGame),
               if (officeGame.isChatOpen)
@@ -344,6 +359,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
                   companyId: widget.companyId!,
                   repository: widget.repository!,
                   slackRepository: widget.slackRepository,
+                  serverLockRepository: widget.serverLockRepository,
                   onClose: () => setState(() => _isAdminPanelOpen = false),
                 ),
             ],

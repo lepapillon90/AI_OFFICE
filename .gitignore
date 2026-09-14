@@ -12,6 +12,11 @@ coverage/
 .flutter-plugins
 .flutter-plugins-dependencies
 
+# Local secrets — docs/PHASE8_REMOTE_AGENT.md's local agent config (holds
+# a Supabase service-role key in plain text; only bin/remote_agent.config.
+# example.json, the template, is committed)
+bin/remote_agent.config.json
+
 # Operating-system and editor files
 .DS_Store
 Thumbs.db

@@ -14,6 +14,7 @@ import 'package:ai_office/game/floors/project_room_map.dart';
 import 'package:ai_office/game/interactions/computer_interaction.dart';
 import 'package:ai_office/game/interactions/elevator_interaction.dart';
 import 'package:ai_office/game/interactions/meeting_room_interaction.dart';
+import 'package:ai_office/game/interactions/server_machine_interaction.dart';
 import 'package:ai_office/game/isometric/iso_lobby_scene.dart';
 import 'package:ai_office/game/isometric/iso_projection.dart';
 import 'package:ai_office/game/map/office_layout.dart';
@@ -100,6 +101,25 @@ typedef RemoteCommandHandler = Future<String> Function(
   String? machineKey,
 );
 
+/// Checks [attempt] against the company's server password (see
+/// [ServerMachineInteraction]/[OfficeGame.submitServerPassword]) and
+/// resolves true if it matches. Null outside a signed-in session.
+typedef ServerPasswordVerifier = Future<bool> Function(String attempt);
+
+/// The server machine's "실행"/"종료" power switch
+/// (docs/PHASE8_REMOTE_AGENT.md) — the local agent process may already be
+/// running in the background the whole time (e.g. via a Windows scheduled
+/// task), but only actually processes commands while this is on. Null
+/// outside a signed-in session.
+typedef ServerRunningChecker = Future<bool> Function();
+
+/// Sets the server machine's power switch — see [ServerRunningChecker].
+/// Shared company-wide state (unlike the password unlock, which is
+/// deliberately per-session), so [OfficeGame] never caches the result of
+/// either this or [ServerRunningChecker] — both always go straight
+/// through to Supabase on demand. Null outside a signed-in session.
+typedef ServerRunningSetter = Future<void> Function(bool running);
+
 /// The interactive office world and its camera configuration.
 class OfficeGame extends FlameGame
     with HasKeyboardHandlerComponents, ScrollDetector, ChangeNotifier {
@@ -128,6 +148,15 @@ class OfficeGame extends FlameGame
     void Function(BoardTask task)? onBoardTaskChanged,
     void Function(String taskId)? onBoardTaskDeleted,
     RemoteCommandHandler? requestRemoteCommand,
+    ServerPasswordVerifier? verifyServerPassword,
+    // True (the default, and what every test implicitly gets) means the
+    // server starts already unlocked — matches "no password configured",
+    // the same opt-in shape as the Slack integration. The host app passes
+    // false only when ServerLockRepository.hasPassword said the company
+    // actually has one set.
+    bool initialServerUnlocked = true,
+    ServerRunningChecker? checkServerRunning,
+    ServerRunningSetter? setServerRunning,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
@@ -153,6 +182,10 @@ class OfficeGame extends FlameGame
           onBoardTaskChanged: onBoardTaskChanged,
           onBoardTaskDeleted: onBoardTaskDeleted,
           requestRemoteCommand: requestRemoteCommand,
+          verifyServerPassword: verifyServerPassword,
+          initialServerUnlocked: initialServerUnlocked,
+          checkServerRunning: checkServerRunning,
+          setServerRunning: setServerRunning,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -183,7 +216,12 @@ class OfficeGame extends FlameGame
     this.onBoardTaskChanged,
     this.onBoardTaskDeleted,
     this.requestRemoteCommand,
+    this.verifyServerPassword,
+    bool initialServerUnlocked = true,
+    this.checkServerRunning,
+    this.setServerRunning,
   }) {
+    _isServerUnlocked = initialServerUnlocked;
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
     for (final task in initialTasks ?? const <NpcTask>[]) {
@@ -211,6 +249,12 @@ class OfficeGame extends FlameGame
     // meeting-room partition (see OfficeLayout.blockers's doc comment).
     meetingRoom = MeetingRoomInteraction(position: Vector2(1150, 200))
       ..priority = _furniturePriority;
+    // Inside the meeting-room partition too, but well clear of the
+    // meeting table itself.
+    serverMachine = ServerMachineInteraction(
+      position: Vector2(1300, 750),
+      onTap: openServerLockDialog,
+    )..priority = _furniturePriority;
     player = OfficePlayer(
       position: playerPosition,
       onPositionChanged: _onPlayerMoved,
@@ -224,7 +268,13 @@ class OfficeGame extends FlameGame
       ..forEach((npc) => npc.priority = _npcPriority);
     _floorComponents = {
       Floor.lobby: IsoLobbyScene().createComponents(),
-      Floor.workspace: [OfficeMap(), ...computers, meetingRoom, ...npcs],
+      Floor.workspace: [
+        OfficeMap(),
+        ...computers,
+        meetingRoom,
+        serverMachine,
+        ...npcs,
+      ],
       Floor.projectRoom: [ProjectRoomMap(), ...projectRoomNpcs],
       Floor.executive: [ExecutiveMap(), ...executiveNpcs],
     };
@@ -243,6 +293,7 @@ class OfficeGame extends FlameGame
   late final List<ComputerInteraction> computers;
   late final ElevatorInteraction elevator;
   late final MeetingRoomInteraction meetingRoom;
+  late final ServerMachineInteraction serverMachine;
   late final Map<Floor, List<Component>> _floorComponents;
   late List<AiEmployee> _employees;
 
@@ -340,6 +391,15 @@ class OfficeGame extends FlameGame
   /// [sendChatMessage].
   static const remoteAgentName = '서버';
 
+  /// Verifies a [ServerMachineInteraction] password attempt — see
+  /// [submitServerPassword]. Null outside a signed-in session.
+  final ServerPasswordVerifier? verifyServerPassword;
+
+  /// The server machine's power switch — see [checkServerRunning]/
+  /// [setServerRunning] and [ServerRunningChecker]'s doc comment.
+  final ServerRunningChecker? checkServerRunning;
+  final ServerRunningSetter? setServerRunning;
+
   /// The project/task board, in no particular guaranteed order — backs the
   /// office screen's board panel, which groups these by [BoardTask.status].
   final List<BoardTask> _boardTasks = [];
@@ -369,6 +429,19 @@ class OfficeGame extends FlameGame
   bool _isElevatorPopupOpen = false;
   bool _isMeetingPopupOpen = false;
   bool _isProfileCardOpen = false;
+  bool _isServerLockDialogOpen = false;
+
+  /// Whether the server machine (see [ServerMachineInteraction]) has been
+  /// unlocked this session — gates `@서버` remote commands specifically
+  /// (an employee's own linked computer is unaffected, governed purely by
+  /// that employee's opt-in). Starts at the constructor's
+  /// `initialServerUnlocked` (true — already unlocked — unless the
+  /// company has a password configured), and once unlocked by a correct
+  /// [submitServerPassword] stays that way only for this session; this is
+  /// a game-world flavor gate, not the real security boundary (the
+  /// command whitelist and per-employee opt-in are), so there's no need
+  /// to persist an unlock across reloads.
+  bool _isServerUnlocked = false;
 
   /// Who's in the current meeting, by employee id — empty when no meeting
   /// is running. Ephemeral (in-memory only), like the "작업 중" status
@@ -412,6 +485,13 @@ class OfficeGame extends FlameGame
 
   /// Whether the meeting panel is open.
   bool get isMeetingPopupOpen => _isMeetingPopupOpen;
+
+  /// Whether the server machine's password prompt is open.
+  bool get isServerLockDialogOpen => _isServerLockDialogOpen;
+
+  /// Whether the server machine has been unlocked this session — see
+  /// [_isServerUnlocked].
+  bool get isServerUnlocked => _isServerUnlocked;
 
   /// Whether a meeting is currently running.
   bool get isMeetingActive => _meetingStartedAt != null;
@@ -462,6 +542,73 @@ class OfficeGame extends FlameGame
 
   /// Closes the meeting panel and restores normal game input.
   void closeMeetingPopup() => _setMeetingPopupOpen(false);
+
+  /// Opens the server machine's password prompt — see
+  /// [ServerMachineInteraction], a direct click, not a proximity + E-key
+  /// interaction like the popups above, so this doesn't check nearbyness.
+  void openServerLockDialog() {
+    if (!_isComputerPopupOpen && !_isProfileCardOpen && !_isMeetingPopupOpen) {
+      _setServerLockDialogOpen(true);
+    }
+  }
+
+  /// Closes the password prompt and restores normal game input.
+  void closeServerLockDialog() => _setServerLockDialogOpen(false);
+
+  /// Checks [attempt] against the company's server password via
+  /// [verifyServerPassword] and, if correct, unlocks `@서버` remote
+  /// commands for the rest of this session and closes the dialog.
+  /// Returns a human-readable outcome for the dialog to show.
+  Future<String> submitServerPassword(String attempt) async {
+    final verify = verifyServerPassword;
+    if (verify == null) {
+      return '서버 잠금 연동이 아직 설정되지 않았습니다.';
+    }
+    final bool correct;
+    try {
+      correct = await verify(attempt);
+    } catch (e) {
+      return '확인 중 오류가 발생했습니다: $e';
+    }
+    if (!correct) {
+      return '비밀번호가 올바르지 않습니다.';
+    }
+    _isServerUnlocked = true;
+    closeServerLockDialog();
+    notifyListeners();
+    return '서버 잠금이 해제되었습니다.';
+  }
+
+  /// The server machine's current "실행 중"/"정지됨" state — see
+  /// [checkServerRunning]. Always asks Supabase fresh (see
+  /// [ServerRunningChecker]'s doc comment on why this isn't cached);
+  /// false if there's no signed-in session or the query fails.
+  Future<bool> fetchServerRunning() async {
+    final check = checkServerRunning;
+    if (check == null) {
+      return false;
+    }
+    try {
+      return await check();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Flips the server machine's power switch — see [setServerRunning].
+  /// Returns a human-readable outcome for the dialog to show.
+  Future<String> updateServerRunning(bool running) async {
+    final set = setServerRunning;
+    if (set == null) {
+      return '서버 잠금 연동이 아직 설정되지 않았습니다.';
+    }
+    try {
+      await set(running);
+    } catch (e) {
+      return '처리 중 오류가 발생했습니다: $e';
+    }
+    return running ? '서버를 실행했습니다.' : '서버를 종료했습니다.';
+  }
 
   /// Starts a meeting with [participants] (flips each to "회의 중" — reverted
   /// on [endMeeting] — and logs it to the activity feed). A no-op if a
@@ -534,6 +681,7 @@ class OfficeGame extends FlameGame
     _broadcastState(force: true);
     closeElevatorPopup();
     closeMeetingPopup();
+    closeServerLockDialog();
     notifyListeners();
   }
 
@@ -542,7 +690,10 @@ class OfficeGame extends FlameGame
 
   /// Opens the player's profile card (avatar preview, name, role, status).
   void openProfileCard() {
-    if (_isComputerPopupOpen || _isElevatorPopupOpen || _isMeetingPopupOpen) {
+    if (_isComputerPopupOpen ||
+        _isElevatorPopupOpen ||
+        _isMeetingPopupOpen ||
+        _isServerLockDialogOpen) {
       return;
     }
     _isProfileCardOpen = true;
@@ -1272,7 +1423,13 @@ class OfficeGame extends FlameGame
     final senderName = employee?.name ?? remoteAgentName;
     final parsed = _parseRemoteCommand(command);
     String replyBody;
-    if (parsed == null) {
+    // The password lock (ServerMachineInteraction) only ever gates the
+    // shared default computer (`@서버`, employee == null) — an employee's
+    // own linked computer is already gated by that employee's own
+    // opt-in, a separate and sufficient boundary.
+    if (employee == null && !_isServerUnlocked) {
+      replyBody = '서버가 잠겨 있습니다. 서버실의 서버기계에서 비밀번호를 입력해 잠금을 해제해주세요.';
+    } else if (parsed == null) {
       replyBody = '지원하지 않는 명령이에요. "터미널 열어줘" 또는 "OOO 폴더 만들어줘"처럼 말해보세요.';
     } else {
       final request = requestRemoteCommand;
@@ -1482,6 +1639,9 @@ class OfficeGame extends FlameGame
       if (_isMeetingPopupOpen) {
         closeMeetingPopup();
       }
+      if (_isServerLockDialogOpen) {
+        closeServerLockDialog();
+      }
       if (_isProfileCardOpen) {
         closeProfileCard();
       }
@@ -1683,6 +1843,15 @@ class OfficeGame extends FlameGame
       return;
     }
     _isMeetingPopupOpen = value;
+    player.movementEnabled = !value;
+    notifyListeners();
+  }
+
+  void _setServerLockDialogOpen(bool value) {
+    if (_isServerLockDialogOpen == value) {
+      return;
+    }
+    _isServerLockDialogOpen = value;
     player.movementEnabled = !value;
     notifyListeners();
   }

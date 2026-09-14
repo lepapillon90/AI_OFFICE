@@ -1,0 +1,5 @@
+{
+  "companyId": "여기에 회사 ID(companies.id)를 넣으세요",
+  "serviceKey": "여기에 Supabase 서비스 롤(비밀) 키를 넣으세요",
+  "agentKey": "이 컴퓨터가 담당할 직원의 workstationId — 기본 에이전트라면 이 줄 자체를 삭제"
+}
