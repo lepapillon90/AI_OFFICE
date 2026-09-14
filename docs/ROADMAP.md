@@ -76,6 +76,7 @@ Realtime Presence로 검증 완료(가짜 두 번째 사용자를 같은 채널�
 - 관리자 화면, 감사 기록, 권한 강화 ✅ — 대표 전용 관리자 화면(구성원 목록·역할 변경), 활동 기록에 행위자(`actor_name`) 추가로 "누가" 했는지 남김, 인사관리자의 인사관리자 초대 권한 상승 구멍을 서버(RLS)·클라이언트 양쪽에서 막음(`docs/PHASE7_ADMIN.md`). 자동 테스트(`test/company_role_test.dart`, `test/activity_log_test.dart`)로 검증 + 진행 중 `activity_events`의 type 체크 제약이 board/meeting을 허용하지 않던 버그도 함께 발견·수정
 - 성능·보안·배포 운영 점검 ✅ — 새 기능보다는 코드 리뷰 기반 점검(`docs/PHASE7_OPS_REVIEW.md`). 실제로 고친 것: (1) `ask-employee` Edge Function이 호출자가 그 회사 구성원인지 전혀 확인하지 않던 것 → 확인 로직 추가, (2) 같은 함수에 회사당 5분/30회 사용량 상한 추가(비용 통제), (3) 명령/대화 맥락 길이의 서버 쪽 상한 추가(클라이언트 우회 방지), (4) 로그인 시 7개 쿼리를 순차 실행하던 것 → `Future.wait`로 병렬화(로그인 지연시간 단축), (5) 업무 보드 조회에 조회 상한 누락 → 최근 500건으로 제한
 - 후속 반영(위 점검의 권장 사항 중 구현) ✅ — (1) AI 직원 사용량을 gpt-4o-mini 단가 기준 USD로 환산해 표시, (2) 사용량 한도(429) 응답을 별도 예외로 구분해 재시도·집계 없이 안내, (3) `activity_events`에 안정적인 `actor_user_id` 추가, (4) `MultiplayerChannel`을 `private: true`로 전환하고 `realtime.messages` RLS 정책으로 Realtime Authorization 적용 — 실제 라이브 호출로 "회사 구성원만 구독 가능, 남의 회사 채널은 거절" 검증 완료, (5) 웹 렌더러는 Flutter 3.47.4 기준 CanvasKit이 이미 기본/유일 렌더러임을 확인(코드 변경 불필요). **의도적으로 제외**: Vercel 빌드 캐시(대시보드 설정 필요, 코드만으로 확인 불가)
+- 후속 반영 2(남은 이연 minor 항목) ✅ — (1) `activity_read_marks` 테이블로 "마지막으로 읽은 시각"을 서버에 저장해 안 읽음 배지가 재로그인 후에도 정확히 복원되도록 함, (2) 업무 보드 카드에 설명 편집 UI 추가(모델·DB는 이미 지원), (3) 업무 보드에 드래그 앤 드롭 추가(`Draggable`/`DragTarget`, 기존 버튼 이동과 공존) — 실제 브라우저 검증 중 "새 업무" 다이얼로그의 제목 입력이 "추가" 버튼을 활성화하지 못하던 실제 버그를 발견해 함께 수정(`docs/PHASE7_ACTIVITY.md`, `docs/PHASE7_BOARD.md`)
 
 완료 기준: 팀이 가상 오피스를 실제 협업 공간으로 안정적으로 사용할 수 있습니다. — **충족**. Phase 7의 5개 항목 모두 완료.
 

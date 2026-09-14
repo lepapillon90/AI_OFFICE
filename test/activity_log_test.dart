@@ -79,6 +79,62 @@ void main() {
     expect(game.activityLog, hasLength(1));
   });
 
+  test(
+      'a null initialActivityReadAt starts caught up even with a nonempty '
+      'seeded history', () {
+    final seeded = ActivityEvent(
+      id: 'restored-1',
+      type: ActivityType.member,
+      message: '테스트 시드 이벤트',
+      createdAt: DateTime.now(),
+    );
+    final game = OfficeGame(initialActivity: [seeded]);
+
+    expect(game.unreadActivityCount, 0);
+  });
+
+  test(
+      'initialActivityReadAt marks only events logged after it as unread',
+      () {
+    final now = DateTime.now();
+    final before = ActivityEvent(
+      id: 'old',
+      type: ActivityType.member,
+      message: '이미 읽은 이벤트',
+      createdAt: now.subtract(const Duration(minutes: 10)),
+    );
+    final after = ActivityEvent(
+      id: 'new',
+      type: ActivityType.member,
+      message: '아직 안 읽은 이벤트',
+      createdAt: now,
+    );
+    final game = OfficeGame(
+      initialActivity: [before, after],
+      initialActivityReadAt: now.subtract(const Duration(minutes: 1)),
+    );
+
+    expect(game.unreadActivityCount, 1);
+  });
+
+  test('markActivityRead reports the new read time via onActivityRead', () {
+    DateTime? reportedReadAt;
+    final game = OfficeGame(
+      onActivityRead: (readAt) => reportedReadAt = readAt,
+    );
+    final noah = game.employees.firstWhere((e) => e.name == '노아');
+    game.updateEmployee(noah.copyWith(status: NpcStatus.meeting));
+
+    game.markActivityRead();
+
+    expect(reportedReadAt, isNotNull);
+    expect(
+      reportedReadAt!.isAfter(game.activityLog.first.createdAt) ||
+          reportedReadAt!.isAtSameMomentAs(game.activityLog.first.createdAt),
+      isTrue,
+    );
+  });
+
   test('initialActivity seeds the activity log at startup', () {
     final seeded = ActivityEvent(
       id: 'restored-1',

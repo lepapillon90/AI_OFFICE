@@ -109,6 +109,9 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
           .fetchRecentActivity(companyId)
           .catchError((_) => <ActivityEvent>[]),
       _boardRepository.fetchTasks(companyId).catchError((_) => <BoardTask>[]),
+      _activityRepository
+          .fetchLastReadAt(companyId, Supabase.instance.client.auth.currentUser!.id)
+          .catchError((_) => null),
     ]);
     final role = results[0] as CompanyRole;
     final employees = results[1] as List<AiEmployee>;
@@ -117,11 +120,13 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     final usageSummaries = results[4] as Map<String, NpcUsageSummary>;
     final activityHistory = results[5] as List<ActivityEvent>;
     final boardTasks = results[6] as List<BoardTask>;
+    final activityReadAt = results[7] as DateTime?;
 
+    final userId = Supabase.instance.client.auth.currentUser!.id;
     final multiplayer = MultiplayerChannel(
       client: Supabase.instance.client,
       companyId: companyId,
-      userId: Supabase.instance.client.auth.currentUser!.id,
+      userId: userId,
     );
     _multiplayerToDispose = multiplayer;
 
@@ -174,6 +179,10 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       initialActivity: activityHistory,
       onActivityLogged: (event) =>
           _activityRepository.logEvent(companyId, event).catchError((_) {}),
+      initialActivityReadAt: activityReadAt,
+      onActivityRead: (readAt) => _activityRepository
+          .markRead(companyId, userId, readAt)
+          .catchError((_) {}),
       initialBoardTasks: boardTasks,
       onBoardTaskChanged: (task) =>
           _boardRepository.upsertTask(companyId, task).catchError((_) {}),

@@ -54,6 +54,43 @@ void main() {
     expect(game.boardTasks.single.assigneeName, isNull);
   });
 
+  test('editBoardTaskDescription sets, updates, and clears the description',
+      () {
+    final game = OfficeGame.forTest(playerPosition: Vector2(430, 350));
+    final task = game.createBoardTask(title: '설명 있는 업무');
+    expect(game.boardTasks.single.description, isNull);
+
+    game.editBoardTaskDescription(task.id, '  자세한 내용  ');
+    expect(game.boardTasks.single.description, '자세한 내용');
+    expect(game.activityLog.first.message, contains('설명이 수정'));
+
+    game.editBoardTaskDescription(task.id, '   ');
+    expect(game.boardTasks.single.description, isNull);
+  });
+
+  test('setBoardTaskStatus moves a card directly to any column', () {
+    final game = OfficeGame.forTest(playerPosition: Vector2(430, 350));
+    final task = game.createBoardTask(title: '드래그로 옮길 업무');
+
+    game.setBoardTaskStatus(task.id, BoardTaskStatus.done);
+    expect(game.boardTasks.single.status, BoardTaskStatus.done);
+    expect(game.activityLog.first.message, contains('완료'));
+
+    game.setBoardTaskStatus(task.id, BoardTaskStatus.todo);
+    expect(game.boardTasks.single.status, BoardTaskStatus.todo);
+  });
+
+  test('setBoardTaskStatus is a no-op when already in that column', () {
+    final changes = <BoardTask>[];
+    final game = OfficeGame(onBoardTaskChanged: changes.add);
+    final task = game.createBoardTask(title: '업무');
+    changes.clear();
+
+    game.setBoardTaskStatus(task.id, BoardTaskStatus.todo);
+
+    expect(changes, isEmpty);
+  });
+
   test('deleteBoardTask removes the card and calls onBoardTaskDeleted', () {
     String? deletedId;
     final game = OfficeGame(onBoardTaskDeleted: (id) => deletedId = id);

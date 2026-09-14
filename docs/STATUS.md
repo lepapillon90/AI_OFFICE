@@ -82,14 +82,15 @@
   - 직원 정보 수정, AI 직원 명령 성공/실패를 `OfficeGame.activityLog`에 기록 — 화면 우측 상단 알림(🔔) 아이콘 + 안 읽은 개수 배지, 누르면 "활동 기록" 패널
   - `activity_events` 테이블에 영속화(마이그레이션 SQL은 `docs/PHASE7_ACTIVITY.md`) — 실행 전에도 세션 메모리 기준으로는 정상 동작
   - 자동 테스트(`test/activity_log_test.dart`)로 로깅·안 읽음 카운트·초기 복원 검증
-  - 이연: 구성원 초대/합류 이벤트는 아직 활동 기록에 안 남음, 안 읽음 상태 자체의 서버 영속화 없음, 실시간(다른 세션 즉시 반영) 아님
+  - 이연: 구성원 초대/합류 이벤트는 아직 활동 기록에 안 남음, 실시간(다른 세션 즉시 반영) 아님
+  - ~~안 읽음 상태 자체의 서버 영속화 없음~~ — 완료(아래 "Phase 7 후속 반영 2" 참고)
 - Phase 7 — 프로젝트·업무 보드 연결 (`docs/PHASE7_BOARD.md`)
   - 할 일/진행 중/완료 3칸 칸반 보드 — 화면 우측 상단 보드(칸반) 아이콘으로 열기, "새 업무"로 카드 추가(제목+담당 AI 직원 선택), 카드마다 이전/다음 단계 이동·삭제 버튼
   - 담당자가 있는 카드는 "AI에게 지시" 버튼으로 그 직원 채팅방을 열고 카드 제목을 `@직원이름 제목` 명령으로 바로 전송 — Phase 6 명령 파이프라인(재시도, 작업 이력, 사용량 집계) 그대로 적용됨
   - 카드 생성/이동/배정/삭제가 활동 기록에도 함께 남음
   - `board_tasks` 테이블에 영속화(마이그레이션 SQL은 `docs/PHASE7_BOARD.md`) — 실행 전에도 세션 메모리 기준으로는 정상 동작
   - 자동 테스트(`test/board_test.dart`)로 생성/이동/배정/삭제/AI 지시 전부 검증 + 실제 브라우저 클릭으로도 "새 업무" 생성(제목 입력·담당자 선택)→ 다음 단계로 이동 → 삭제까지 전 과정 확인(활동 기록 배지도 각 조작마다 정상 증가)
-  - 이연: 드래그 앤 드롭, 카드 설명 편집 UI, 사람에게 배정, 여러 사용자 간 실시간 동기화
+  - ~~이연: 드래그 앤 드롭, 카드 설명 편집 UI~~ — 완료(아래 "Phase 7 후속 반영 2" 참고). 이연: 사람에게 배정, 여러 사용자 간 실시간 동기화
 - Phase 7 — 회의실·회의 진행 UI (`docs/PHASE7_MEETING.md`)
   - 2층 회의실 파티션 안(맵 데스크/라운지와 겹치지 않는 위치)에 회의 테이블 상호작용 추가, `[E]`로 열기 — 컴퓨터·엘리베이터와 동일한 패턴(`MeetingRoomInteraction`)
   - 참석자(AI 직원) 선택 → "회의 시작"으로 각자 상태를 "회의 중"으로 전환(기존 `_setEmployeeStatus`의 ephemeral 패턴 재사용, 개별 Supabase 저장 없음) → 진행 중엔 참석자 목록·경과 시간 표시 → "회의 종료"로 각자 원래 상태 복원
@@ -117,10 +118,16 @@
   - **Realtime 채널 접근 제어**: `MultiplayerChannel`이 여는 `office:company:<companyId>` 채널을 `RealtimeChannelConfig(private: true)`로 전환하고, `realtime.messages`에 `company_members` 소속을 확인하는 RLS 정책을 추가(Supabase Realtime Authorization) — companyId만 안다고 아무나 구독하던 구멍을 막음. **실제 Node 스크립트로 라이브 검증 완료**: (1) 대표가 자기 회사 채널 구독 → `SUBSCRIBED`, (2) 같은 사용자가 소속 아닌 임의 회사 채널 구독 시도 → `Unauthorized` 에러로 거절, (3) 같은 회사의 다른 구성원이 같은 채널 구독 → `SUBSCRIBED` — 3케이스 전부 의도대로 동작
   - **웹 렌더러**: Flutter 3.47.4의 `flutter build web --help`를 직접 확인한 결과 예전 `--web-renderer` 플래그가 이미 없고 CanvasKit이 기본이자 유일한 렌더러임을 확인 — 코드/스크립트 변경 불필요, 로컬 `flutter build web --release`로 정상 빌드까지 확인
   - **제외**: Vercel 빌드 캐시 — Vercel 대시보드 설정이 필요해 코드만으로는 확인 불가하다는 이유로 사용자가 명시적으로 이번 범위에서 제외
+- Phase 7 후속 반영 2 — 남은 이연(minor) 항목 3가지(`docs/PHASE7_ACTIVITY.md`, `docs/PHASE7_BOARD.md`)
+  - **안 읽음 상태 서버 영속화**: `activity_read_marks(company_id, user_id, last_read_at)` 테이블을 추가해, "활동 기록" 패널을 열 때마다(=읽음 처리) 현재 시각을 저장(`ActivityRepository.markRead`). 로그인 시 그 값을 불러와(`fetchLastReadAt`) 그 시각 이후 이벤트만 안 읽음으로 계산 — 마크가 없으면(첫 로그인/미실행) 전부 읽음으로 간주해 시작(과거 이력이 갑자기 안 읽음으로 뜨는 것 방지). 자동 테스트(`test/activity_log_test.dart`)로 초기 복원 로직·콜백 호출 검증, 실제 앱에서 알림 배지가 0으로 정상 초기화되는 것까지 브라우저로 확인(단, 테이블 SQL을 아직 실행 안 하면 읽음 상태는 저장되지 않고 매번 "전부 읽음"으로 시작 — 앱은 정상 동작)
+  - **업무 보드 카드 설명 편집 UI**: 카드마다 편집 아이콘으로 여러 줄 설명을 입력·수정·삭제(`OfficeGame.editBoardTaskDescription`), 카드에 최대 2줄 미리보기 표시. 데이터 모델(`BoardTask.description`)과 DB 컬럼은 이미 있어서 이번엔 UI만 추가
+  - **업무 보드 드래그 앤 드롭**: 카드가 `Draggable<String>`, 각 칸이 `DragTarget<String>` — 드롭 시 `OfficeGame.setBoardTaskStatus()`로 그 칸에 바로 이동(중간 칸을 거치지 않음, 기존 "이전/다음 단계로" 버튼은 그대로 유지). 실제 실행 중인 앱에서 라이브로 확인(정상적으로 칸 이동, 활동 기록에도 남음) — `WidgetTester`로 Flutter의 Draggable/DragTarget 제스처 아레나를 재현하는 위젯 테스트는 이 세션에서 불안정하게 나와 제외, `OfficeGame.setBoardTaskStatus()` 자체는 `test/board_test.dart`로 검증
+  - **라이브 검증 중 발견해 함께 고친 버그**: "새 업무" 다이얼로그의 제목 `TextField`에 `onChanged`가 없어서, 제목을 입력해도 다이얼로그가 다시 빌드되지 않아 "추가" 버튼이 첫 렌더링(빈 텍스트) 기준으로 계속 비활성 상태에 멈춰있던 버그 — 실제 브라우저 클릭 검증 중 발견, `onChanged: (_) => setDialogState(() {})` 추가로 수정, 회귀 테스트(`test/board_panel_test.dart`) 추가
 
 ## 다음 작업
 
 1. `docs/PHASE5_MULTIPLAYER.md`의 `messages` 테이블 SQL, `docs/PHASE6_AI_EMPLOYEES.md`의 컬럼 추가 SQL, 그리고 **새로 추가된** `npc_tasks`/`npc_usage_events` 테이블·`npc-documents` Storage 버킷 SQL, `docs/PHASE7_ACTIVITY.md`/`docs/PHASE7_BOARD.md`/`docs/PHASE7_ADMIN.md`의 SQL을 아직 안 하셨다면 Supabase SQL Editor/대시보드에서 실행 — 실행 전까지는 작업 이력·사용량·활동 기록·업무 보드가 세션 메모리에만 있다가 새로고침 시 사라지지만 앱 자체는 정상 동작
+1-3. **새로 추가된** `docs/PHASE7_ACTIVITY.md`의 `activity_read_marks` 테이블 SQL(안 읽음 상태 서버 영속화)도 아직이면 실행 필요 — 실행 전까지는 로그인마다 활동 기록을 전부 "읽음"으로 간주해 시작(에러는 아님)
 1-1. `ask-employee` Edge Function 재배포 완료 및 라이브 검증 완료 — 소속 확인(403)·사용량 상한(429) 정상 동작 확인 (이 항목은 완료됨)
 1-2. `realtime.messages` RLS 정책(Realtime Authorization) 적용 및 라이브 검증 완료 — 클라이언트가 다음 배포/새로고침 때 자동으로 `private: true`로 붙음
 2. 위 "Phase 5 마무리 점검"의 실제 브라우저 두 개 확인 (제가 자동화 환경에서는 재현 못 함)

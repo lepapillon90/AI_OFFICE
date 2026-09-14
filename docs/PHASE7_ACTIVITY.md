@@ -53,6 +53,26 @@ create policy "members_insert_activity_events" on activity_events
     )
   );
 
+-- 각 사용자가 이 회사의 활동 기록을 마지막으로 언제 읽었는지 — 안 읽음 배지를
+-- 서버에 영속화하기 위한 테이블(companies/company_members는 건드리지 않음).
+-- company_members에 컬럼을 추가하는 대신 별도 테이블로 둔 이유: 그 테이블의
+-- RLS는 "자기 자신의 행만 UPDATE 가능"을 role/company_id 컬럼까지 포함해
+-- 안전하게 표현하기 어려운데(자기 역할을 자기가 바꿔버릴 수 있는 구멍이 될
+-- 위험), 이 테이블은 오직 이 용도 하나뿐이라 "user_id = auth.uid()"만으로
+-- 전체 컬럼을 안전하게 열어줄 수 있음.
+create table if not exists activity_read_marks (
+  company_id uuid not null references companies(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  last_read_at timestamptz not null default now(),
+  primary key (company_id, user_id)
+);
+
+alter table activity_read_marks enable row level security;
+
+drop policy if exists "self_manage_activity_read_marks" on activity_read_marks;
+create policy "self_manage_activity_read_marks" on activity_read_marks
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
 notify pgrst, 'reload schema';
 ```
 
@@ -61,10 +81,10 @@ notify pgrst, 'reload schema';
 1. `OfficeGame._logActivity()`가 이벤트를 세션 메모리 목록(최근 50건)에 추가하고 안 읽은 개수를 늘린 뒤, `onActivityLogged` 콜백으로 알림
 2. `AuthGate`가 그 콜백을 `ActivityRepository.logEvent()`에 연결해 Supabase에 저장(best-effort — 실패해도 활동 기록 화면에는 이미 반영됨)
 3. 로그인 시 `ActivityRepository.fetchRecentActivity()`가 최근 50건을 불러와 `OfficeGame(initialActivity: ...)`로 복원
-4. 안 읽은 개수(`unreadActivityCount`)는 세션 메모리에만 있는 로컬 상태입니다 — 재로그인하면 새로 불러온 활동 기록에 대해 다시 "안 읽음"으로 시작합니다(즉, "마지막으로 읽은 지점" 자체는 서버에 저장하지 않음)
+4. 안 읽은 개수(`unreadActivityCount`)는 로그인 시 함께 불러온 `activity_read_marks.last_read_at`(내가 마지막으로 읽은 시각) 기준으로 복원됩니다 — 그 시각 이후에 로그된 이벤트만 "안 읽음"으로 집니다. 이 마크가 아예 없으면(첫 로그인, 또는 아직 SQL 미실행) 전체를 "이미 읽음"으로 간주해 시작합니다(불러온 과거 이력 전체가 갑자기 안 읽음으로 뜨는 것을 방지)
+5. "활동 기록" 패널을 열 때마다 `OfficeGame.markActivityRead()`가 현재 시각을 `onActivityRead` 콜백으로 알리고, `AuthGate`가 `ActivityRepository.markRead()`로 Supabase에 저장(best-effort)
 
 ## 이연된 범위
 
 - 구성원 초대/합류(`CompanyRepository.inviteMember`/`ensureCompany`의 초대 수락)는 아직 활동 기록에 남기지 않음 — "직원 정보 관리" 패널의 "구성원 초대" 목록에서 별도로 확인 가능
-- 안 읽음 상태 자체의 서버 영속화(마지막으로 읽은 시각 등)는 이번 범위 아님
 - 활동 기록 자체를 실시간(다른 로그인 세션에도 즉시)으로 반영하는 건 이번 범위 아님 — 로그인 시점에 한 번 불러올 뿐, Realtime 구독은 하지 않음

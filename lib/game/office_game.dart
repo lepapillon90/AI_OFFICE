@@ -85,6 +85,8 @@ class OfficeGame extends FlameGame
     DocumentUrlResolver? resolveDocumentUrl,
     List<ActivityEvent>? initialActivity,
     void Function(ActivityEvent event)? onActivityLogged,
+    DateTime? initialActivityReadAt,
+    void Function(DateTime readAt)? onActivityRead,
     List<BoardTask>? initialBoardTasks,
     void Function(BoardTask task)? onBoardTaskChanged,
     void Function(String taskId)? onBoardTaskDeleted,
@@ -104,6 +106,8 @@ class OfficeGame extends FlameGame
           resolveDocumentUrl: resolveDocumentUrl,
           initialActivity: initialActivity,
           onActivityLogged: onActivityLogged,
+          initialActivityReadAt: initialActivityReadAt,
+          onActivityRead: onActivityRead,
           initialBoardTasks: initialBoardTasks,
           onBoardTaskChanged: onBoardTaskChanged,
           onBoardTaskDeleted: onBoardTaskDeleted,
@@ -128,6 +132,8 @@ class OfficeGame extends FlameGame
     this.resolveDocumentUrl,
     List<ActivityEvent>? initialActivity,
     this.onActivityLogged,
+    DateTime? initialActivityReadAt,
+    this.onActivityRead,
     List<BoardTask>? initialBoardTasks,
     this.onBoardTaskChanged,
     this.onBoardTaskDeleted,
@@ -141,6 +147,15 @@ class OfficeGame extends FlameGame
       _usageByEmployee.addAll(initialUsage);
     }
     _activityLog.addAll(initialActivity ?? const []);
+    // No read mark yet (fresh account, or the table hasn't been migrated)
+    // means "nothing's been read" would mark the entire loaded history as
+    // unread — noisy on every login. Treat that case as "already caught
+    // up" instead; only a real, later read mark can leave events unread.
+    _unreadActivityCount = initialActivityReadAt == null
+        ? 0
+        : _activityLog
+            .where((e) => e.createdAt.isAfter(initialActivityReadAt))
+            .length;
     _boardTasks.addAll(initialBoardTasks ?? const []);
     computers = _buildComputers()
       ..forEach((c) => c.priority = _furniturePriority);
@@ -235,6 +250,13 @@ class OfficeGame extends FlameGame
   final List<ActivityEvent> _activityLog = [];
   static const _activityHistoryLimit = 50;
   int _unreadActivityCount = 0;
+
+  /// Called with the new read timestamp whenever [markActivityRead] clears
+  /// the badge, so the host app can persist it (e.g. to Supabase's
+  /// `activity_read_marks` table) and restore the right unread count on
+  /// the next login instead of always starting at zero. Null outside a
+  /// signed-in session.
+  final void Function(DateTime readAt)? onActivityRead;
 
   /// Called whenever a board task is created or edited (including status
   /// moves and assignment changes), so the host app can upsert it (e.g. to
@@ -563,6 +585,7 @@ class OfficeGame extends FlameGame
   /// Clears the unread badge — called when the player opens the activity
   /// panel.
   void markActivityRead() {
+    onActivityRead?.call(DateTime.now());
     if (_unreadActivityCount == 0) {
       return;
     }
@@ -673,6 +696,45 @@ class OfficeGame extends FlameGame
       assignee != null
           ? '"${updated.title}" 업무가 ${assignee.name}에게 배정되었습니다'
           : '"${updated.title}" 업무의 담당자가 해제되었습니다',
+    );
+    notifyListeners();
+  }
+
+  /// Replaces [taskId]'s description (null/empty clears it).
+  void editBoardTaskDescription(String taskId, String? description) {
+    final index = _boardTasks.indexWhere((t) => t.id == taskId);
+    if (index == -1) {
+      return;
+    }
+    final trimmed = description?.trim();
+    final updated = _boardTasks[index].copyWith(
+      description: (trimmed == null || trimmed.isEmpty) ? null : trimmed,
+      updatedAt: DateTime.now(),
+    );
+    _boardTasks[index] = updated;
+    onBoardTaskChanged?.call(updated);
+    _logActivity(ActivityType.board, '"${updated.title}" 업무의 설명이 수정되었습니다');
+    notifyListeners();
+  }
+
+  /// Moves [taskId] straight to [status] regardless of the current column —
+  /// backs drag-and-drop, which can drop a card into any column directly
+  /// (unlike [moveBoardTask]'s one-column-at-a-time buttons).
+  void setBoardTaskStatus(String taskId, BoardTaskStatus status) {
+    final index = _boardTasks.indexWhere((t) => t.id == taskId);
+    if (index == -1) {
+      return;
+    }
+    final current = _boardTasks[index];
+    if (current.status == status) {
+      return;
+    }
+    final updated = current.copyWith(status: status, updatedAt: DateTime.now());
+    _boardTasks[index] = updated;
+    onBoardTaskChanged?.call(updated);
+    _logActivity(
+      ActivityType.board,
+      '"${updated.title}" 업무가 "${status.displayLabel}"(으)로 이동했습니다',
     );
     notifyListeners();
   }
