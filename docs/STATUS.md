@@ -140,6 +140,14 @@
   - **구성원 강퇴**: 관리자 화면 구성원 목록에 대표 전용 "구성원 제거" 아이콘 버튼 추가(`AdminPanel._removeMember`) — 확인 다이얼로그를 거쳐 `CompanyRepository.removeMember`로 `company_members` 행만 삭제(계정 자체는 유지). 기존 `owner_manage_members` RLS 정책이 이미 DELETE까지 `for all`로 포함하고 있어 새 정책 불필요 — 실제 Node 스크립트(`test_remove_member.mjs`)로 라이브 검증: 대표는 제거 가능, hr_manager는 시도해도 행이 그대로 남음(RLS가 거절)
   - **감사 기록 필터/검색**: `ActivityPanel`을 `StatelessWidget`에서 `StatefulWidget`으로 전환 — 유형별 필터 칩(직원/AI 명령/보드/회의/구성원)과 메시지·행위자 텍스트 검색(둘 다 AND 조합)을 이미 불러온 최근 활동 이력 안에서 클라이언트 단으로 처리(서버 쪽 페이지네이션/검색은 아님). 자동 테스트(`test/activity_panel_test.dart`) 6개로 기본 표시·유형 필터·메시지 검색·행위자 검색·필터+검색 조합·검색 해제 전부 검증
   - 이연: 대표 역할 자체의 이전(소유권 양도)
+- **Phase 8 — 회사 컴퓨터 원격 명령(터미널 열기 · 폴더 만들기, 직원별 다중 컴퓨터)** (`docs/PHASE8_REMOTE_AGENT.md`)
+  - 채팅에서 `@서버 터미널 열어줘` / `@서버 OOO 폴더 만들어줘`처럼 말하면, 회사 기본 컴퓨터에서 실제로 실행 — 브라우저는 로컬 파일시스템/터미널에 절대 접근할 수 없다는 제약 때문에, 그 컴퓨터에서 상시 실행되는 별도의 로컬 에이전트(`bin/remote_agent.dart`)가 대신 수행
+  - **다중 컴퓨터(직원별 화이트리스트)**: 처음엔 회사당 컴퓨터 한 대만 가정했다가, 사용자 요청으로 "직원마다 다른 컴퓨터를 지정"할 수 있도록 확장 — `AiEmployee.computerLinked`(기본 false, 화면 우측 상단 배지 아이콘의 "직원 정보 관리" 팝업 — 관리자 화면과는 별개 — 안의 체크박스로 켬/끔)를 켠 직원에게만 `@그 직원 터미널 열어줘`가 실제 명령으로 라우팅되고, 그 직원의 안정적인 자리 식별자 `workstationId`(예: `desk-1`)가 `remote_commands.machine_key`로 들어가 에이전트가 실행 시 준 `--agent-key`와 매칭되는 것만 집어감. 켜지 않은 직원은 "터미널"/"폴더" 같은 단어가 든 평범한 업무 요청을 그대로 LLM 대화로 처리(오인식 방지가 옵트인 설계의 핵심 이유)
+  - **화이트리스트 방식**: 채팅 문장이 임의의 셸 명령으로 그대로 실행되는 게 아니라, `RemoteCommandType`(`lib/data/remote_command.dart`)에 정의된 `open_terminal`/`create_folder` 두 가지만 허용 — `OfficeGame._parseRemoteCommand`가 단순 키워드 매칭으로 문장을 그 중 하나로 해석하고, 해당 없는 문장은 아무 것도 실행하지 않고 "지원하지 않는 명령" 안내만 나감
+  - `remote_commands` 테이블에 `pending` 상태로 명령을 등록(회사 구성원 누구나 등록/조회 가능, RLS) → 로컬 에이전트가 자기 서비스 롤 키로, 자기 담당(`machine_key`가 자신의 `--agent-key`와 일치하는 행, 또는 `--agent-key` 없으면 `machine_key IS NULL`인 행)만 폴링해 실제로 실행하고 결과와 함께 `done`/`failed`로 갱신(일반 계정은 UPDATE 정책이 아예 없어 상태를 직접 바꿀 수 없음, 오직 서비스 롤 키만 가능) → 클라이언트는 `RemoteCommandRepository.runCommand`가 그 행의 변경을 Supabase Realtime(Postgres Changes)으로 구독하고 있다가 완료되면 "서버"(또는 그 직원)가 보낸 채팅 답장처럼 결과를 표시(기존 AI 직원 답장과 같은 자리/모양)
+  - `bin/remote_agent.dart`는 순수 `dart:io`만 사용하는 독립 스크립트(`pubspec.yaml`이 동시 작업 중인 다른 프로세스 소유라 새 의존성을 추가할 수 없어서, 패키지 없이 HTTPS 폴링만으로 구현) — `dart run bin/remote_agent.dart --company-id ... --service-key ... [--agent-key <직원 workstationId>]`로 그 컴퓨터에서 직접 실행해두는 구조(OS 서비스 자동 등록은 이번 범위 아님), 컴퓨터 한 대 = 에이전트 프로세스 한 개
+  - 자동 테스트(`test/remote_command_test.dart`) 9개로 명령 파싱(터미널/폴더 이름 추출/부가 표현 무시)·화이트리스트 밖 명령 거절·핸들러 미설정 시 안내·빈 멘션은 디스패치 안 함·컴퓨터 연결된 직원은 machineKey=workstationId로 라우팅되고 LLM은 호출 안 됨·연결 안 된 직원은 "터미널/폴더" 단어가 있어도 평소처럼 LLM으로만 감을 검증 — 실제 컴퓨터에서 에이전트를 띄워 SQL 실행 후 라이브로 터미널이 열리고 폴더가 생기는지는 사용자 환경에서 확인 필요(서비스 롤 키가 없어 이 세션에서는 에이전트의 Supabase 왕복 자체는 라이브 검증 못함, 순수 로직/컴파일/테스트만 확인)
+  - 이연: 화이트리스트 확장(파일 목록/삭제/스크립트 실행 등), 에이전트의 OS 서비스 자동 등록
 
 ## 다음 작업
 

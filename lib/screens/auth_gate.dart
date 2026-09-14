@@ -10,6 +10,7 @@ import 'package:ai_office/data/npc_command_service.dart';
 import 'package:ai_office/data/npc_document_repository.dart';
 import 'package:ai_office/data/npc_task_repository.dart';
 import 'package:ai_office/data/npc_usage_repository.dart';
+import 'package:ai_office/data/remote_command_repository.dart';
 import 'package:ai_office/data/slack_integration_repository.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/board/board_task.dart';
@@ -91,6 +92,8 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   final _activityRepository = ActivityRepository(Supabase.instance.client);
   final _boardRepository = BoardRepository(Supabase.instance.client);
   final _slackRepository = SlackIntegrationRepository(Supabase.instance.client);
+  final _remoteCommandRepository =
+      RemoteCommandRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -215,6 +218,15 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
           _boardRepository.upsertTask(companyId, task).catchError((_) {}),
       onBoardTaskDeleted: (taskId) =>
           _boardRepository.deleteTask(taskId).catchError((_) {}),
+      requestRemoteCommand: (type, params, machineKey) =>
+          _remoteCommandRepository.runCommand(
+        companyId: companyId,
+        requestedByName:
+            Supabase.instance.client.auth.currentUser?.email ?? '사용자',
+        type: type,
+        params: params,
+        machineKey: machineKey,
+      ),
     );
 
     return _LoadedSession(

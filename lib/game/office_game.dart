@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/multiplayer_channel.dart';
+import 'package:ai_office/data/remote_command.dart';
 import 'package:ai_office/data/remote_player_state.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/board/board_task.dart';
@@ -79,6 +80,26 @@ typedef AttachmentUploader = Future<String?> Function({
 /// Null outside a signed-in session.
 typedef AttachmentUrlResolver = Future<String?> Function(String attachmentPath);
 
+/// Sends a whitelisted [RemoteCommandType] (parsed from an `@서버 ...` chat
+/// command, or an `@employee ...` one when that employee is
+/// [AiEmployee.computerLinked] — see [OfficeGame.sendChatMessage]) to the
+/// company's local agent and resolves with a human-readable outcome once
+/// the agent finishes (or times out) — see docs/PHASE8_REMOTE_AGENT.md.
+///
+/// [machineKey] is null for `@서버` (the agent started without
+/// `--agent-key`, i.e. the one shared/default computer) or an employee's
+/// [AiEmployee.workstationId] when the command was addressed to a
+/// specific linked employee instead — see docs/PHASE8_REMOTE_AGENT.md's
+/// multi-computer section.
+///
+/// Null outside a signed-in session (e.g. tests), in which case the
+/// command is reported unsupported.
+typedef RemoteCommandHandler = Future<String> Function(
+  RemoteCommandType type,
+  Map<String, dynamic> params,
+  String? machineKey,
+);
+
 /// The interactive office world and its camera configuration.
 class OfficeGame extends FlameGame
     with HasKeyboardHandlerComponents, ScrollDetector, ChangeNotifier {
@@ -106,6 +127,7 @@ class OfficeGame extends FlameGame
     List<BoardTask>? initialBoardTasks,
     void Function(BoardTask task)? onBoardTaskChanged,
     void Function(String taskId)? onBoardTaskDeleted,
+    RemoteCommandHandler? requestRemoteCommand,
   }) : this._(
           playerPosition: OfficeLayout.worldSize.clone() / 2,
           employees: employees,
@@ -130,6 +152,7 @@ class OfficeGame extends FlameGame
           initialBoardTasks: initialBoardTasks,
           onBoardTaskChanged: onBoardTaskChanged,
           onBoardTaskDeleted: onBoardTaskDeleted,
+          requestRemoteCommand: requestRemoteCommand,
         );
 
   OfficeGame.forTest({required Vector2 playerPosition})
@@ -159,6 +182,7 @@ class OfficeGame extends FlameGame
     List<BoardTask>? initialBoardTasks,
     this.onBoardTaskChanged,
     this.onBoardTaskDeleted,
+    this.requestRemoteCommand,
   }) {
     _chatMessages = List.of(initialChatMessages ?? const []);
     _employees = List.of(employees ?? sampleEmployees);
@@ -304,6 +328,17 @@ class OfficeGame extends FlameGame
   /// Called when a board task is deleted, so the host app can delete its
   /// row too. Null outside a signed-in session.
   final void Function(String taskId)? onBoardTaskDeleted;
+
+  /// Runs a whitelisted command on the company's local agent — see
+  /// [RemoteCommandHandler] and docs/PHASE8_REMOTE_AGENT.md. Null outside a
+  /// signed-in session (e.g. tests), in which case `@서버 ...` chat commands
+  /// reply that the integration isn't configured.
+  final RemoteCommandHandler? requestRemoteCommand;
+
+  /// The name that routes an `@서버 ...` chat command to [requestRemoteCommand]
+  /// instead of an AI employee or another signed-in user — see
+  /// [sendChatMessage].
+  static const remoteAgentName = '서버';
 
   /// The project/task board, in no particular guaranteed order — backs the
   /// office screen's board panel, which groups these by [BoardTask.status].
@@ -874,6 +909,7 @@ class OfficeGame extends FlameGame
     String? toUserId;
     String? toName;
     AiEmployee? employee;
+    var isRemoteAgentCommand = false;
     // Captured before the current message is appended below, so it holds
     // only *prior* turns — the command itself is passed separately to
     // _dispatchNpcCommand and shouldn't also show up inside its own history.
@@ -883,6 +919,11 @@ class OfficeGame extends FlameGame
       if (remote != null) {
         toUserId = remote.userId;
         toName = remote.name;
+      } else if (mention.name.toLowerCase() == remoteAgentName.toLowerCase()) {
+        // Private to me too, same as an NPC command — see below.
+        toUserId = selfId;
+        toName = remoteAgentName;
+        isRemoteAgentCommand = true;
       } else {
         employee = _employeeByName(mention.name);
         if (employee != null) {
@@ -919,11 +960,30 @@ class OfficeGame extends FlameGame
     if (employee != null &&
         mention!.command.isNotEmpty &&
         attachmentPath == null) {
-      unawaited(_dispatchNpcCommand(
-        employee: employee,
-        command: mention.command,
-        history: history ?? const [],
-      ));
+      // A computer-linked employee still gets a normal LLM reply for
+      // anything that isn't recognized whitelist phrasing — only "터미널"/
+      // "폴더" wording is ever reinterpreted as a real remote command, so
+      // an unlinked employee's ordinary conversation is never affected and
+      // a linked one's ordinary conversation almost never is either.
+      final asRemoteCommand =
+          employee.computerLinked ? _parseRemoteCommand(mention.command) : null;
+      if (asRemoteCommand != null) {
+        unawaited(_dispatchRemoteCommand(
+          mention.command,
+          employee: employee,
+          machineKey: employee.workstationId,
+        ));
+      } else {
+        unawaited(_dispatchNpcCommand(
+          employee: employee,
+          command: mention.command,
+          history: history ?? const [],
+        ));
+      }
+    } else if (isRemoteAgentCommand &&
+        mention!.command.isNotEmpty &&
+        attachmentPath == null) {
+      unawaited(_dispatchRemoteCommand(mention.command));
     }
   }
 
@@ -1146,6 +1206,97 @@ class OfficeGame extends FlameGame
       createdAt: DateTime.now(),
       // Private to me, like the command that triggered it — see
       // sendChatMessage's mention handling.
+      toUserId: selfId,
+      isNpc: true,
+    );
+    _chatMessages = [..._chatMessages, reply];
+    multiplayer?.sendChat(reply);
+    onChatMessageSent?.call(reply);
+    notifyListeners();
+  }
+
+  /// Parses an `@서버 ...` command's text into a whitelisted
+  /// [RemoteCommandType] + params, or null if it doesn't match any
+  /// supported phrasing (see docs/PHASE8_REMOTE_AGENT.md for the exact
+  /// syntax). Deliberately simple keyword matching, not an LLM — the
+  /// command set is a closed whitelist, so this never needs to understand
+  /// arbitrary language, only recognize a couple of fixed shapes.
+  (RemoteCommandType, Map<String, dynamic>)? _parseRemoteCommand(String text) {
+    final trimmed = text.trim();
+    if (trimmed.contains('터미널')) {
+      return (RemoteCommandType.openTerminal, const <String, dynamic>{});
+    }
+    if (trimmed.contains('폴더')) {
+      var name = trimmed;
+      for (final word in const [
+        '바탕화면에',
+        '바탕화면',
+        '폴더를',
+        '폴더',
+        '만들어줘',
+        '만들어주세요',
+        '생성해줘',
+        '생성',
+        '만들기',
+      ]) {
+        name = name.replaceAll(word, '');
+      }
+      name = name.trim();
+      if (name.isEmpty) {
+        return null;
+      }
+      return (RemoteCommandType.createFolder, <String, dynamic>{'name': name});
+    }
+    return null;
+  }
+
+  /// Handles an `@서버 ...` (or, when [employee] is
+  /// [AiEmployee.computerLinked], `@employee ...`) chat command (see
+  /// [sendChatMessage]): parses [command] into a whitelisted
+  /// [RemoteCommandType], runs it via [requestRemoteCommand] scoped to
+  /// [machineKey], and posts the outcome as a reply from [employee]'s name
+  /// (or [remoteAgentName] when there's no [employee]) — same
+  /// private-thread shape as an NPC reply.
+  Future<void> _dispatchRemoteCommand(
+    String command, {
+    AiEmployee? employee,
+    String? machineKey,
+  }) async {
+    final senderName = employee?.name ?? remoteAgentName;
+    final parsed = _parseRemoteCommand(command);
+    String replyBody;
+    if (parsed == null) {
+      replyBody = '지원하지 않는 명령이에요. "터미널 열어줘" 또는 "OOO 폴더 만들어줘"처럼 말해보세요.';
+    } else {
+      final request = requestRemoteCommand;
+      if (request == null) {
+        replyBody = '서버 에이전트 연동이 아직 설정되지 않았습니다. docs/PHASE8_REMOTE_AGENT.md를 참고해주세요.';
+      } else {
+        final (type, params) = parsed;
+        _logActivity(
+          ActivityType.aiCommand,
+          '$senderName에게 "${_truncate(command)}" 명령을 전달했습니다',
+        );
+        try {
+          replyBody = await request(type, params, machineKey);
+        } catch (e) {
+          replyBody = '명령 처리 중 오류가 발생했습니다: $e';
+        }
+        _logActivity(
+          ActivityType.aiCommand,
+          '$senderName 명령 처리 결과: ${_truncate(replyBody)}',
+        );
+      }
+    }
+
+    final multiplayer = this.multiplayer;
+    final selfId = multiplayer?.userId ?? 'local';
+    final reply = ChatMessage(
+      id: '${DateTime.now().microsecondsSinceEpoch}-remote-agent',
+      userId: selfId,
+      senderName: senderName,
+      body: replyBody,
+      createdAt: DateTime.now(),
       toUserId: selfId,
       isNpc: true,
     );

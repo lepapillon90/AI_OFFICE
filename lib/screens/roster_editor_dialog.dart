@@ -209,6 +209,35 @@ class _EmployeeEditorState extends State<_EmployeeEditor> {
             widget.game.updateEmployee(employee.copyWith(status: status));
           },
         ),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: const Text('실제 컴퓨터와 연결(원격 명령)'),
+          subtitle: Text(
+            '켜면 "@${employee.name} 터미널 열어줘"처럼 말했을 때 이 직원의 자리'
+            '(${employee.workstationId})에서 실행 중인 로컬 에이전트로 명령이 감 — '
+            'docs/PHASE8_REMOTE_AGENT.md',
+            style: const TextStyle(fontSize: 11),
+          ),
+          value: employee.computerLinked,
+          onChanged: (linked) {
+            if (linked == null) {
+              return;
+            }
+            // Unlike the name/role TextFields (whose own controller shows
+            // typed text immediately) and the status dropdown (which caches
+            // its own selection via `initialValue`), this checkbox's
+            // `value:` is controlled — it only ever shows what re-reading
+            // `employee.computerLinked` returns, so without a local
+            // setState the box would visibly stay unchecked even though
+            // updateEmployee() already applied the change underneath.
+            setState(() {
+              widget.game
+                  .updateEmployee(employee.copyWith(computerLinked: linked));
+            });
+          },
+        ),
       ],
     );
   }

@@ -206,6 +206,7 @@ class CompanyRepository {
         'role': employee.role,
         'provider': employee.provider,
         'status': employee.status.name,
+        'computer_linked': employee.computerLinked,
       };
 
   Map<String, dynamic> _toRow(String companyId, AiEmployee employee) => {
@@ -220,5 +221,8 @@ class CompanyRepository {
         provider: row['provider'] as String,
         workstationId: row['workstation_id'] as String,
         status: NpcStatus.values.byName(row['status'] as String),
+        // Tolerates the column not existing yet (pre-migration): every
+        // employee simply starts out not linked to a real computer.
+        computerLinked: row['computer_linked'] as bool? ?? false,
       );
 }
