@@ -31,6 +31,8 @@ class ChatRepository {
       'to_user_id': message.toUserId,
       'to_name': message.toName,
       'is_npc': message.isNpc,
+      'attachment_path': message.attachmentPath,
+      'attachment_name': message.attachmentName,
     });
   }
 }

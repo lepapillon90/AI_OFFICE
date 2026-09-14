@@ -9,6 +9,8 @@ class ChatMessage {
     this.toUserId,
     this.toName,
     this.isNpc = false,
+    this.attachmentPath,
+    this.attachmentName,
   });
 
   final String id;
@@ -29,6 +31,14 @@ class ChatMessage {
   /// command` rather than something a human typed.
   final bool isNpc;
 
+  /// Storage path of an attached file (`chat-attachments` bucket), or null
+  /// for a plain text message — see docs/PHASE8_FILE_SHARING.md.
+  final String? attachmentPath;
+
+  /// The attachment's original filename, kept alongside [attachmentPath]
+  /// so the chat can show it without a lookup.
+  final String? attachmentName;
+
   Map<String, dynamic> toBroadcastJson() => {
         'id': id,
         'userId': userId,
@@ -38,6 +48,8 @@ class ChatMessage {
         'toUserId': toUserId,
         'toName': toName,
         'isNpc': isNpc,
+        'attachmentPath': attachmentPath,
+        'attachmentName': attachmentName,
       };
 
   static ChatMessage? fromBroadcastJson(Map<String, dynamic> json) {
@@ -51,6 +63,8 @@ class ChatMessage {
         toUserId: json['toUserId'] as String?,
         toName: json['toName'] as String?,
         isNpc: json['isNpc'] as bool? ?? false,
+        attachmentPath: json['attachmentPath'] as String?,
+        attachmentName: json['attachmentName'] as String?,
       );
     } catch (_) {
       return null;
@@ -66,5 +80,7 @@ class ChatMessage {
         toUserId: row['to_user_id'] as String?,
         toName: row['to_name'] as String?,
         isNpc: row['is_npc'] as bool? ?? false,
+        attachmentPath: row['attachment_path'] as String?,
+        attachmentName: row['attachment_name'] as String?,
       );
 }

@@ -123,6 +123,13 @@
   - **업무 보드 카드 설명 편집 UI**: 카드마다 편집 아이콘으로 여러 줄 설명을 입력·수정·삭제(`OfficeGame.editBoardTaskDescription`), 카드에 최대 2줄 미리보기 표시. 데이터 모델(`BoardTask.description`)과 DB 컬럼은 이미 있어서 이번엔 UI만 추가
   - **업무 보드 드래그 앤 드롭**: 카드가 `Draggable<String>`, 각 칸이 `DragTarget<String>` — 드롭 시 `OfficeGame.setBoardTaskStatus()`로 그 칸에 바로 이동(중간 칸을 거치지 않음, 기존 "이전/다음 단계로" 버튼은 그대로 유지). 실제 실행 중인 앱에서 라이브로 확인(정상적으로 칸 이동, 활동 기록에도 남음) — `WidgetTester`로 Flutter의 Draggable/DragTarget 제스처 아레나를 재현하는 위젯 테스트는 이 세션에서 불안정하게 나와 제외, `OfficeGame.setBoardTaskStatus()` 자체는 `test/board_test.dart`로 검증
   - **라이브 검증 중 발견해 함께 고친 버그**: "새 업무" 다이얼로그의 제목 `TextField`에 `onChanged`가 없어서, 제목을 입력해도 다이얼로그가 다시 빌드되지 않아 "추가" 버튼이 첫 렌더링(빈 텍스트) 기준으로 계속 비활성 상태에 멈춰있던 버그 — 실제 브라우저 클릭 검증 중 발견, `onChanged: (_) => setDialogState(() {})` 추가로 수정, 회귀 테스트(`test/board_panel_test.dart`) 추가
+- **Phase 8 착수** — 사용자와 논의해 로드맵 원안 이후의 새 방향 확정(`docs/ROADMAP.md`), 첫 항목으로 파일 업로드/공유 구현 (`docs/PHASE8_FILE_SHARING.md`)
+  - 채팅 입력창에 📎 첨부 버튼 추가 — 브라우저 파일 선택창(`lib/util/pick_file.dart`, `flutter test` VM에서는 안전하게 null만 반환하는 조건부 export 패턴, `lib/util/open_url.dart`와 동일한 방식)으로 실제 파일을 골라 `chat-attachments` Storage 버킷에 업로드
+  - 공간 채팅/귓속말/AI 직원 방 어디로든 보낼 수 있음 — AI 직원 방에 보내도 명령으로 해석돼 불필요한 API 호출이 나가지 않도록, 본문을 `@이름`만(명령 없이) 채워 보냄(`OfficeGame.sendChatAttachment`)
+  - 메시지 목록에 파일명 칩으로 표시, 클릭 시 서명 URL을 새 탭으로 열람(`OfficeGame.attachmentUrlFor`)
+  - `messages` 테이블에 `attachment_path`/`attachment_name` 컬럼 추가 필요(마이그레이션 SQL은 `docs/PHASE8_FILE_SHARING.md`) — 실행 전엔 업로드가 조용히 실패할 뿐 텍스트 채팅은 정상 동작
+  - 자동 테스트(`test/chat_attachment_test.dart`)로 업로드 성공/실패/미설정, AI 방 오발송 방지, URL 해석 전부 검증 — 실제 `dart:html` 파일 선택창 자체는 `flutter test`의 VM에서 재현 불가해 실제 브라우저 확인 권장
+  - 이연: AI 직원이 첨부 파일 내용을 실제로 읽는 기능, 이미지 미리보기, 업무 보드 카드 첨부
 
 ## 다음 작업
 

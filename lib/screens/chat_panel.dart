@@ -1,5 +1,7 @@
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/game/office_game.dart';
+import 'package:ai_office/util/open_url.dart';
+import 'package:ai_office/util/pick_file.dart';
 import 'package:flutter/material.dart';
 
 /// A company-wide chat panel, anchored to the bottom-right of the screen,
@@ -115,6 +117,32 @@ class _ChatPanelState extends State<ChatPanel> {
     });
   }
 
+  Future<void> _attachFile() async {
+    final picked = await pickFile();
+    if (picked == null || !mounted) {
+      return;
+    }
+    await widget.game.sendChatAttachment(
+      fileName: picked.name,
+      bytes: picked.bytes,
+      toRoomName: _selectedRoomName,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller =
+          _tabIndex == 0 ? _publicScrollController : _roomScrollController;
+      if (controller.hasClients) {
+        controller.jumpTo(controller.position.maxScrollExtent);
+      }
+    });
+  }
+
+  Future<void> _openAttachment(ChatMessage message) async {
+    final url = await widget.game.attachmentUrlFor(message);
+    if (url != null) {
+      openInNewTab(url);
+    }
+  }
+
   /// The TextField's Enter/submit handler: sends if there's something to
   /// send, otherwise treats an empty Enter as "close the chat" — pairs
   /// with OfficeGame.handleInteractionKey opening it on Enter when closed.
@@ -213,6 +241,7 @@ class _ChatPanelState extends State<ChatPanel> {
                       messages: publicMessages,
                       scrollController: _publicScrollController,
                       emptyText: '아직 메시지가 없습니다.',
+                      onOpenAttachment: _openAttachment,
                     ),
                     _selectedRoomKey == null
                         ? _RoomList(
@@ -223,6 +252,7 @@ class _ChatPanelState extends State<ChatPanel> {
                             messages: selectedRoomMessages,
                             scrollController: _roomScrollController,
                             emptyText: '아직 나눈 대화가 없습니다.',
+                            onOpenAttachment: _openAttachment,
                           ),
                   ],
                 ),
@@ -252,7 +282,12 @@ class _ChatPanelState extends State<ChatPanel> {
                         onSubmitted: _onSubmitted,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: '파일 첨부',
+                      onPressed: _attachFile,
+                      color: Colors.white70,
+                      icon: const Icon(Icons.attach_file),
+                    ),
                     IconButton(
                       onPressed: _send,
                       color: const Color(0xFF5DE0E6),
@@ -445,11 +480,13 @@ class _MessageList extends StatelessWidget {
     required this.messages,
     required this.scrollController,
     required this.emptyText,
+    required this.onOpenAttachment,
   });
 
   final List<ChatMessage> messages;
   final ScrollController scrollController;
   final String emptyText;
+  final void Function(ChatMessage message) onOpenAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -489,12 +526,50 @@ class _MessageList extends StatelessWidget {
                   fontStyle: isWhisper ? FontStyle.italic : FontStyle.normal,
                 ),
               ),
-              Text(
-                message.body,
-                style: TextStyle(
-                  color: isWhisper ? Colors.white70 : Colors.white,
+              if (message.attachmentName == null)
+                Text(
+                  message.body,
+                  style: TextStyle(
+                    color: isWhisper ? Colors.white70 : Colors.white,
+                  ),
+                )
+              else
+                InkWell(
+                  onTap: () => onOpenAttachment(message),
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.attach_file,
+                          size: 14,
+                          color: Color(0xFF5DE0E6),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            message.attachmentName!,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF5DE0E6),
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         );

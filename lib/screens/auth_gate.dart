@@ -1,5 +1,6 @@
 import 'package:ai_office/data/activity_repository.dart';
 import 'package:ai_office/data/board_repository.dart';
+import 'package:ai_office/data/chat_attachment_repository.dart';
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/data/chat_repository.dart';
 import 'package:ai_office/data/company_repository.dart';
@@ -78,6 +79,8 @@ class _CompanyLoader extends StatefulWidget {
 class _CompanyLoaderState extends State<_CompanyLoader> {
   late final Future<_LoadedSession> _future = _load();
   final _chatRepository = ChatRepository(Supabase.instance.client);
+  final _chatAttachmentRepository =
+      ChatAttachmentRepository(Supabase.instance.client);
   final _npcCommandService = NpcCommandService(Supabase.instance.client);
   final _taskRepository = NpcTaskRepository(Supabase.instance.client);
   final _usageRepository = NpcUsageRepository(Supabase.instance.client);
@@ -139,6 +142,24 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       onChatMessageSent: (message) => _chatRepository
           .sendMessage(companyId, message)
           .catchError((_) {}),
+      uploadChatAttachment: ({required fileName, required bytes}) async {
+        try {
+          return await _chatAttachmentRepository.upload(
+            companyId: companyId,
+            fileName: fileName,
+            bytes: bytes,
+          );
+        } catch (_) {
+          return null;
+        }
+      },
+      resolveAttachmentUrl: (path) async {
+        try {
+          return await _chatAttachmentRepository.signedUrl(path);
+        } catch (_) {
+          return null;
+        }
+      },
       askEmployee: ({
         required employeeName,
         required employeeRole,

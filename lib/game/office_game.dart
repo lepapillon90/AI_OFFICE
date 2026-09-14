@@ -66,6 +66,19 @@ typedef DocumentGenerator = Future<String?> Function({
 /// Supabase Storage signed URL). Null outside a signed-in session.
 typedef DocumentUrlResolver = Future<String?> Function(String documentPath);
 
+/// Uploads a file a player attaches to a chat message (e.g. to Supabase
+/// Storage) and returns its storage path, or null if the upload failed.
+/// Null outside a signed-in session (e.g. tests) — attaching is then a
+/// no-op.
+typedef AttachmentUploader = Future<String?> Function({
+  required String fileName,
+  required Uint8List bytes,
+});
+
+/// Resolves a [ChatMessage.attachmentPath] to a URL the player can open.
+/// Null outside a signed-in session.
+typedef AttachmentUrlResolver = Future<String?> Function(String attachmentPath);
+
 /// The interactive office world and its camera configuration.
 class OfficeGame extends FlameGame
     with HasKeyboardHandlerComponents, ScrollDetector, ChangeNotifier {
@@ -75,6 +88,8 @@ class OfficeGame extends FlameGame
     MultiplayerChannel? multiplayer,
     List<ChatMessage>? initialChatMessages,
     void Function(ChatMessage)? onChatMessageSent,
+    AttachmentUploader? uploadChatAttachment,
+    AttachmentUrlResolver? resolveAttachmentUrl,
     NpcCommandHandler? askEmployee,
     List<NpcTask>? initialTasks,
     Map<String, NpcUsageSummary>? initialUsage,
@@ -97,6 +112,8 @@ class OfficeGame extends FlameGame
           multiplayer: multiplayer,
           initialChatMessages: initialChatMessages,
           onChatMessageSent: onChatMessageSent,
+          uploadChatAttachment: uploadChatAttachment,
+          resolveAttachmentUrl: resolveAttachmentUrl,
           askEmployee: askEmployee,
           initialTasks: initialTasks,
           initialUsage: initialUsage,
@@ -123,6 +140,8 @@ class OfficeGame extends FlameGame
     this.multiplayer,
     List<ChatMessage>? initialChatMessages,
     this.onChatMessageSent,
+    this.uploadChatAttachment,
+    this.resolveAttachmentUrl,
     this.askEmployee,
     List<NpcTask>? initialTasks,
     Map<String, NpcUsageSummary>? initialUsage,
@@ -214,6 +233,14 @@ class OfficeGame extends FlameGame
   /// Called after [sendChatMessage] broadcasts a message, so the host app
   /// can persist it (e.g. to Supabase) for chat history.
   final void Function(ChatMessage)? onChatMessageSent;
+
+  /// Uploads a file [sendChatAttachment] attaches to a message — see
+  /// [AttachmentUploader]. Null outside a signed-in session.
+  final AttachmentUploader? uploadChatAttachment;
+
+  /// Resolves a [ChatMessage.attachmentPath] to an openable URL — see
+  /// [AttachmentUrlResolver]. Null outside a signed-in session.
+  final AttachmentUrlResolver? resolveAttachmentUrl;
 
   /// Answers an `@employee command` chat message with that AI employee's
   /// reply (e.g. via a Supabase Edge Function calling an LLM). Null outside
@@ -810,7 +837,14 @@ class OfficeGame extends FlameGame
   /// `@employee 오늘 할 일 정리해줘` sends a command to that AI employee (its
   /// reply is posted as a follow-up message once [askEmployee] resolves);
   /// `@username ...` whispers to that other signed-in user instead.
-  void sendChatMessage(String body) {
+  ///
+  /// [attachmentPath]/[attachmentName] carry a file already uploaded by
+  /// [sendChatAttachment] — plain text sends never set these.
+  void sendChatMessage(
+    String body, {
+    String? attachmentPath,
+    String? attachmentName,
+  }) {
     final trimmed = body.trim();
     if (trimmed.isEmpty) {
       return;
@@ -851,19 +885,65 @@ class OfficeGame extends FlameGame
       createdAt: DateTime.now(),
       toUserId: toUserId,
       toName: toName,
+      attachmentPath: attachmentPath,
+      attachmentName: attachmentName,
     );
     _chatMessages = [..._chatMessages, message];
     multiplayer?.sendChat(message);
     onChatMessageSent?.call(message);
     notifyListeners();
 
-    if (employee != null && mention!.command.isNotEmpty) {
+    // A file attached to an NPC's room is just shared with it, not a
+    // command — nothing in this app has the NPC actually read the file, so
+    // dispatching would just burn a call for a reply that can't reference
+    // it. Sending bare `@name` (no text after it) already parses to an
+    // empty `command`, so this only needs to special-case the attachment.
+    if (employee != null &&
+        mention!.command.isNotEmpty &&
+        attachmentPath == null) {
       unawaited(_dispatchNpcCommand(
         employee: employee,
         command: mention.command,
         history: history ?? const [],
       ));
     }
+  }
+
+  /// Uploads [bytes] as [fileName] via [uploadChatAttachment] and sends it
+  /// as a chat message — to the currently open room ([toRoomName], a
+  /// whisper/NPC-thread partner's name) or, if null, to the public space
+  /// chat. A no-op outside a signed-in session (e.g. tests) or if the
+  /// upload fails.
+  Future<void> sendChatAttachment({
+    required String fileName,
+    required Uint8List bytes,
+    String? toRoomName,
+  }) async {
+    final uploader = uploadChatAttachment;
+    if (uploader == null) {
+      return;
+    }
+    final path = await uploader(fileName: fileName, bytes: bytes);
+    if (path == null) {
+      return;
+    }
+    // Bare "@name" (no trailing text) so _parseMention's `command` comes
+    // back empty — routes to the right room without ever reading as an AI
+    // command (see sendChatMessage's attachmentPath == null guard above,
+    // which exists for the same reason and would otherwise be redundant).
+    final body = toRoomName != null ? '@$toRoomName' : '📎 $fileName';
+    sendChatMessage(body, attachmentPath: path, attachmentName: fileName);
+  }
+
+  /// Resolves [message]'s [ChatMessage.attachmentPath] to an openable URL,
+  /// or null if it has none or no resolver is configured (e.g. tests).
+  Future<String?> attachmentUrlFor(ChatMessage message) {
+    final path = message.attachmentPath;
+    final resolver = resolveAttachmentUrl;
+    if (path == null || resolver == null) {
+      return Future.value(null);
+    }
+    return resolver(path);
   }
 
   /// A leading `@name`, split from the rest of the message. `command` is
