@@ -99,7 +99,7 @@
 | 라운지 카펫 | 라운지 | 차분한 오트밀 직조 질감 |
 | 외부 석재 바닥 | 입구·외부 | 차가운 연회색 석재 |
 
-승인용 원본은 [floor-atlas-v1.png](concepts/floor-atlas-v1.png)로 보관한다. 승인 후 각 사분면을 32×32px 반복 타일 PNG로 분리하고, 바닥 경계·모서리·전환 타일을 추가한다.
+초기 평면 질감 시안은 [floor-atlas-v1.png](concepts/floor-atlas-v1.png)로 보관한다. 현재 기준은 참고 이미지처럼 다이아몬드형 윗면과 얇은 입체 옆면을 가진 [floor-atlas-v2-isometric.png](concepts/floor-atlas-v2-isometric.png)다. 승인 후 각 사분면을 32×32px 반복 타일 PNG로 분리하고, 바닥 경계·모서리·전환 타일을 추가한다.
 
 ## 현재 진행
 
