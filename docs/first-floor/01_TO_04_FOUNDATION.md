@@ -99,8 +99,19 @@
 | 라운지 카펫 | 라운지 | 차분한 오트밀 직조 질감 |
 | 외부 석재 바닥 | 입구·외부 | 차가운 연회색 석재 |
 
-초기 평면 질감 시안은 [floor-atlas-v1.png](concepts/floor-atlas-v1.png)로 보관한다. 현재 기준은 참고 이미지처럼 다이아몬드형 윗면과 얇은 입체 옆면을 가진 [floor-atlas-v2-isometric.png](concepts/floor-atlas-v2-isometric.png)다. 승인 후 각 사분면을 32×32px 반복 타일 PNG로 분리하고, 바닥 경계·모서리·전환 타일을 추가한다.
+초기 평면 질감 시안은 [floor-atlas-v1.png](concepts/floor-atlas-v1.png)로 보관한다. 현재 기준은 참고 이미지처럼 다이아몬드형 윗면과 얇은 입체 옆면을 가진 [floor-atlas-v2-isometric.png](concepts/floor-atlas-v2-isometric.png)다.
+
+현재 분리 완료한 32×32px 타일은 다음과 같다.
+
+| 파일 | 사용 구역 |
+| --- | --- |
+| `assets/images/office_1f/tiles/floor/lobby_base.png` | 중앙 로비·리셉션 |
+| `assets/images/office_1f/tiles/floor/cafe_wood.png` | AI CAFE |
+| `assets/images/office_1f/tiles/floor/lounge_carpet.png` | 라운지 |
+| `assets/images/office_1f/tiles/floor/outdoor_stone.png` | 외부 입구 |
+
+확대 검수 이미지는 [floor-tiles-32px.png](qa/floor-tiles-32px.png)에서 확인한다. 다음 바닥 작업은 경계·모서리·전환 타일을 추가하는 것이다.
 
 ## 현재 진행
 
-5단계의 바닥 에셋 시안을 제작했다. 바닥 색·질감이 승인되기 전에는 맵 조립이나 게임 기능을 추가하지 않는다.
+5단계의 기본 바닥 타일 4종을 제작했다. 바닥 경계·모서리·전환 타일이 준비되기 전에는 맵 조립이나 게임 기능을 추가하지 않는다.
