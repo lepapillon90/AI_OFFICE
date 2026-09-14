@@ -85,7 +85,8 @@ Realtime Presence로 검증 완료(가짜 두 번째 사용자를 같은 채널�
 Phase 7까지로 로드맵 원안은 완료되었고, 이후 사용자와 논의해 정한 다음 방향입니다. 계획된 하위 항목:
 
 - 파일 업로드/공유 ✅ — 채팅에서 실제 파일을 첨부해 공유(`docs/PHASE8_FILE_SHARING.md`), `chat-attachments` Storage 버킷, 자동 테스트(`test/chat_attachment_test.dart`)로 업로드/실패/AI 방 오발송 방지 검증
-- 회의실 예약/캘린더, 외부 서비스 연동(Slack 등 웹훅) — 미착수
+- 외부 서비스 연동(Slack 웹훅) ✅ — 활동 기록에 남는 모든 이벤트를 회사가 등록한 Slack 채널로 전송(`docs/PHASE8_SLACK.md`), 실제 Slack 호출은 새 Edge Function(`notify-slack`)이 서버 사이드에서 수행(CORS/URL 노출 방지), 관리자 화면에 대표 전용 웹훅 설정 UI, 자동 테스트(`test/notify_slack_test.dart`)로 전달·미설정 시 no-op·전송 실패가 활동 기록에 영향 없음을 검증
+- 회의실 예약/캘린더 — 미착수
 - 협업 강화(사람에게 업무 배정, 실시간 동기화) — 미착수
 - 온보딩/UX 다듬기 — 미착수
 - 운영/관리 강화 — 미착수
