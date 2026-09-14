@@ -10,6 +10,7 @@ import 'package:ai_office/data/npc_command_service.dart';
 import 'package:ai_office/data/npc_document_repository.dart';
 import 'package:ai_office/data/npc_task_repository.dart';
 import 'package:ai_office/data/npc_usage_repository.dart';
+import 'package:ai_office/data/slack_integration_repository.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/board/board_task.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
@@ -58,6 +59,7 @@ class _LoadedSession {
     required this.canManageMembers,
     required this.multiplayer,
     required this.companyId,
+    required this.slackRepository,
   });
 
   final OfficeGame game;
@@ -65,6 +67,7 @@ class _LoadedSession {
   final bool canManageMembers;
   final MultiplayerChannel multiplayer;
   final String companyId;
+  final SlackIntegrationRepository slackRepository;
 }
 
 class _CompanyLoader extends StatefulWidget {
@@ -87,6 +90,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   final _documentRepository = NpcDocumentRepository(Supabase.instance.client);
   final _activityRepository = ActivityRepository(Supabase.instance.client);
   final _boardRepository = BoardRepository(Supabase.instance.client);
+  final _slackRepository = SlackIntegrationRepository(Supabase.instance.client);
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -204,6 +208,8 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       onActivityRead: (readAt) => _activityRepository
           .markRead(companyId, userId, readAt)
           .catchError((_) {}),
+      notifySlack: (text) =>
+          _slackRepository.notify(companyId, text).catchError((_) {}),
       initialBoardTasks: boardTasks,
       onBoardTaskChanged: (task) =>
           _boardRepository.upsertTask(companyId, task).catchError((_) {}),
@@ -217,6 +223,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
       canManageMembers: role.canManageMembers,
       multiplayer: multiplayer,
       companyId: companyId,
+      slackRepository: _slackRepository,
     );
   }
 
@@ -254,6 +261,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
           onLogout: () => Supabase.instance.client.auth.signOut(),
           companyId: session.companyId,
           repository: widget.repository,
+          slackRepository: session.slackRepository,
         );
       },
     );

@@ -1,4 +1,5 @@
 import 'package:ai_office/data/company_repository.dart';
+import 'package:ai_office/data/slack_integration_repository.dart';
 import 'package:ai_office/game/floors/floor.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/activity_panel.dart';
@@ -22,6 +23,7 @@ class OfficeScreen extends StatefulWidget {
     this.canManageMembers = true,
     this.companyId,
     this.repository,
+    this.slackRepository,
     super.key,
   });
 
@@ -48,6 +50,10 @@ class OfficeScreen extends StatefulWidget {
   /// invite anyone into.
   final String? companyId;
   final CompanyRepository? repository;
+
+  /// Manages the company's Slack webhook integration — null for callers
+  /// without auth (tests), which hides the admin screen's Slack section.
+  final SlackIntegrationRepository? slackRepository;
 
   @override
   State<OfficeScreen> createState() => _OfficeScreenState();
@@ -337,6 +343,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
                   game: officeGame,
                   companyId: widget.companyId!,
                   repository: widget.repository!,
+                  slackRepository: widget.slackRepository,
                   onClose: () => setState(() => _isAdminPanelOpen = false),
                 ),
             ],

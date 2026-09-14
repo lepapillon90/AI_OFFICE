@@ -102,6 +102,7 @@ class OfficeGame extends FlameGame
     void Function(ActivityEvent event)? onActivityLogged,
     DateTime? initialActivityReadAt,
     void Function(DateTime readAt)? onActivityRead,
+    Future<void> Function(String text)? notifySlack,
     List<BoardTask>? initialBoardTasks,
     void Function(BoardTask task)? onBoardTaskChanged,
     void Function(String taskId)? onBoardTaskDeleted,
@@ -125,6 +126,7 @@ class OfficeGame extends FlameGame
           onActivityLogged: onActivityLogged,
           initialActivityReadAt: initialActivityReadAt,
           onActivityRead: onActivityRead,
+          notifySlack: notifySlack,
           initialBoardTasks: initialBoardTasks,
           onBoardTaskChanged: onBoardTaskChanged,
           onBoardTaskDeleted: onBoardTaskDeleted,
@@ -153,6 +155,7 @@ class OfficeGame extends FlameGame
     this.onActivityLogged,
     DateTime? initialActivityReadAt,
     this.onActivityRead,
+    this.notifySlack,
     List<BoardTask>? initialBoardTasks,
     this.onBoardTaskChanged,
     this.onBoardTaskDeleted,
@@ -284,6 +287,14 @@ class OfficeGame extends FlameGame
   /// the next login instead of always starting at zero. Null outside a
   /// signed-in session.
   final void Function(DateTime readAt)? onActivityRead;
+
+  /// Called with every activity event's message right after it's logged,
+  /// so the host app can relay it to an external channel (e.g. Slack via
+  /// the `notify-slack` Edge Function — docs/PHASE8_SLACK.md). Fire-and-
+  /// forget from this class's point of view: a failure here must never
+  /// affect the activity log itself. Null outside a signed-in session, or
+  /// when the host simply doesn't wire an external integration.
+  final Future<void> Function(String text)? notifySlack;
 
   /// Called whenever a board task is created or edited (including status
   /// moves and assignment changes), so the host app can upsert it (e.g. to
@@ -635,6 +646,13 @@ class OfficeGame extends FlameGame
     }
     _unreadActivityCount++;
     onActivityLogged?.call(event);
+    final notify = notifySlack;
+    if (notify != null) {
+      // Caught here, not left to the host's implementation, so the "must
+      // never affect the activity log" promise on [notifySlack]'s doc
+      // comment holds even if a host forgets to guard its own callback.
+      unawaited(notify(message).catchError((_) {}));
+    }
   }
 
   /// Trims [text] to [maxLength] characters (plus an ellipsis) so long AI
