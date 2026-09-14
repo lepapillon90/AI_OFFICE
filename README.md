@@ -1,10 +1,10 @@
 # Codex 자율 개발 루프
 
-이 저장소는 대화를 이어 붙이지 않고, 매 바퀴마다 새 `codex exec` 세션을 시작하는 자율 개발 루프와 Flutter Web 기반 AI 오피스 데모를 포함합니다.
+이 저장소는 대화를 이어 붙이지 않고, 매 바퀴마다 새 `codex exec` 세션을 시작하는 자율 개발 루프와 Flutter Windows 데스크톱 기반 AI 오피스 데모를 포함합니다.
 
 ## Phase 1 가상 오피스
 
-Flutter Web + Flame으로 만든 단일 사용자 픽셀 오피스 데모입니다.
+Flutter + Flame으로 만든 단일 사용자 픽셀 오피스 데모입니다. (Windows 데스크톱 전용 — 웹 빌드는 더 이상 지원하지 않습니다.)
 
 - WASD 또는 방향키로 캐릭터 이동
 - 카메라 추적
@@ -15,10 +15,8 @@ Flutter Web + Flame으로 만든 단일 사용자 픽셀 오피스 데모입니�
 
 ```powershell
 flutter pub get
-flutter run -d chrome
+flutter run -d windows
 ```
-
-Chrome이 Flutter 기기 목록에 없으면 `flutter run -d edge`를 사용합니다.
 
 ## 구성 파일
 

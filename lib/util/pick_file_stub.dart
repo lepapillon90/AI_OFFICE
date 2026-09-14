@@ -1,6 +1,6 @@
 import 'pick_file_types.dart';
 
-/// Fallback used wherever `dart:html` isn't available — notably
-/// `flutter test`'s VM. Always resolves to null, mirroring "user cancelled"
-/// rather than throwing, since nothing in a test exercises a real picker.
+/// This app is desktop-only now — no native file picker is wired up yet,
+/// so this always resolves to null, mirroring "user cancelled" rather than
+/// throwing.
 Future<PickedFile?> pickFile() async => null;
