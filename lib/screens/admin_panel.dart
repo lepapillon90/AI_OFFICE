@@ -140,7 +140,12 @@ class _AdminPanelState extends State<AdminPanel> {
             width: 400,
             margin: const EdgeInsets.all(24),
             padding: const EdgeInsets.all(20),
-            constraints: const BoxConstraints(maxHeight: 620),
+            // A fixed height (not a maxHeight the Column merely tries to
+            // respect) so the body below can be made genuinely
+            // scrollable — with maxHeight alone, content that happened to
+            // land just past the limit (e.g. a long Slack webhook URL)
+            // hard-overflowed instead of scrolling, as a real user hit.
+            height: 620,
             decoration: BoxDecoration(
               color: const Color(0xFF17212B),
               borderRadius: BorderRadius.circular(16),
@@ -148,7 +153,6 @@ class _AdminPanelState extends State<AdminPanel> {
               boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24)],
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -172,121 +176,128 @@ class _AdminPanelState extends State<AdminPanel> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text('구성원', style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: Color(0xFFF44336)),
-                    ),
-                  ),
-                Flexible(
-                  child: FutureBuilder<List<CompanyMember>>(
-                    future: _membersFuture,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Text(
-                          '구성원 목록을 불러오지 못했습니다.\n${snapshot.error}',
-                          style: const TextStyle(color: Colors.white70),
-                        );
-                      }
-                      final members = snapshot.data;
-                      if (members == null) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFF5DE0E6),
-                            ),
-                          ),
-                        );
-                      }
-                      if (members.isEmpty) {
-                        return const Text(
-                          '구성원이 없습니다.',
-                          style: TextStyle(color: Colors.white38),
-                        );
-                      }
-                      return ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: members.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 16, color: Colors.white24),
-                        itemBuilder: (_, index) => _MemberRow(
-                          member: members[index],
-                          onChangeRole: (role) =>
-                              _changeRole(members[index], role),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _openActivityPanel,
-                    icon: const Icon(Icons.fact_check_outlined),
-                    label: const Text('감사 기록 보기'),
-                  ),
-                ),
-                if (widget.slackRepository != null) ...[
-                  const SizedBox(height: 16),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 8),
-                  const Text('Slack 연동', style: TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '활동 기록에 남는 모든 이벤트를 이 웹훅으로 전송합니다. 비워두면 연동이 꺼집니다.',
-                    style: TextStyle(color: Colors.white38, fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _slackUrlController,
-                    enabled: _slackLoaded && !_slackSaving,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'https://hooks.slack.com/services/...',
-                      hintStyle: TextStyle(color: Colors.white38),
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed:
-                              _slackLoaded && !_slackSaving ? _saveSlackWebhook : null,
-                          child: _slackSaving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Color(0xFF5DE0E6),
-                                  ),
-                                )
-                              : const Text('저장'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_slackStatus != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      _slackStatus!,
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  ],
-                ],
+                Expanded(child: SingleChildScrollView(child: _buildBody())),
               ],
             ),
           ),
         ),
+      );
+
+  /// Everything below the fixed title bar — scrolled as one unit (see
+  /// [build]'s comment on why) rather than each section trying to manage
+  /// its own overflow independently.
+  Widget _buildBody() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('구성원', style: TextStyle(color: Colors.white70)),
+          const SizedBox(height: 8),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: Color(0xFFF44336)),
+              ),
+            ),
+          FutureBuilder<List<CompanyMember>>(
+            future: _membersFuture,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text(
+                  '구성원 목록을 불러오지 못했습니다.\n${snapshot.error}',
+                  style: const TextStyle(color: Colors.white70),
+                );
+              }
+              final members = snapshot.data;
+              if (members == null) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: CircularProgressIndicator(color: Color(0xFF5DE0E6)),
+                  ),
+                );
+              }
+              if (members.isEmpty) {
+                return const Text(
+                  '구성원이 없습니다.',
+                  style: TextStyle(color: Colors.white38),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: members.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 16, color: Colors.white24),
+                itemBuilder: (_, index) => _MemberRow(
+                  member: members[index],
+                  onChangeRole: (role) => _changeRole(members[index], role),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openActivityPanel,
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('감사 기록 보기'),
+            ),
+          ),
+          if (widget.slackRepository != null) ...[
+            const SizedBox(height: 16),
+            const Divider(color: Colors.white24),
+            const SizedBox(height: 8),
+            const Text('Slack 연동', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 4),
+            const Text(
+              '활동 기록에 남는 모든 이벤트를 이 웹훅으로 전송합니다. 비워두면 연동이 꺼집니다.',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _slackUrlController,
+              enabled: _slackLoaded && !_slackSaving,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'https://hooks.slack.com/services/...',
+                hintStyle: TextStyle(color: Colors.white38),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed:
+                        _slackLoaded && !_slackSaving ? _saveSlackWebhook : null,
+                    child: _slackSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF5DE0E6),
+                            ),
+                          )
+                        : const Text('저장'),
+                  ),
+                ),
+              ],
+            ),
+            if (_slackStatus != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _slackStatus!,
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ],
+        ],
       );
 }
 
