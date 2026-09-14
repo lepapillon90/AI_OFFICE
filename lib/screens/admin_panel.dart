@@ -113,7 +113,16 @@ class _AdminPanelState extends State<AdminPanel> {
         member.userId,
         role,
       );
-      setState(() => _membersFuture = _loadMembers());
+      // Block body, not `() => _membersFuture = _loadMembers()`: an arrow
+      // function's body is an expression whose *value* becomes the
+      // callback's return value, and an assignment expression evaluates to
+      // the assigned value — here, the Future _loadMembers() returns.
+      // setState() asserts its callback must be synchronous (returning
+      // void), so that arrow form throws "setState() callback argument
+      // returned a Future" every time a role change actually succeeds.
+      setState(() {
+        _membersFuture = _loadMembers();
+      });
     } catch (e) {
       setState(() => _error = '역할 변경에 실패했습니다: $e');
     }
