@@ -134,6 +134,15 @@
 
 ## 검증 기록
 
+## 1층 에셋 기반 레이아웃
+
+- 1층은 **28×18 타일 · 타일당 64px · 1792×1152px** 규격으로 확장 완료.
+- 제공된 `assets/1층` 에셋 시트에서 분리한 v4 스프라이트로 상단 로비·카페·중앙 나무 화단·매점·라운지·입구/연못 조경을 배치.
+- 중앙 나무 화단 주위에 128px 이상 통로를 보장하고, 바닥 뒤에 구조물·가구·브랜딩·조경을 레이어 순서로 렌더링.
+- 원본 시트에서 유입된 엘리베이터·카페 카운터·입구 화분의 선/글자 조각은 제거 후 재검수.
+- 렌더링 QA 이미지: `docs/qa/first-floor-asset-layout.png`.
+- 제한 사항: 별도 메뉴 보드·긴 공용 테이블·웰컴 매트·독립 슬로건 보드는 현재 제공 에셋에 없어 추가 제작 전까지 배치하지 않음. 실시간 플레이어 이동을 포함한 광범위 런타임 테스트는 기존 Flame 테스트 헬퍼의 멈춤 문제로 이번 검수 범위에서 제외.
+
 - `flutter test`: 이 세션에서 작성/수정한 파일 관련 테스트(`widget_test.dart`, `computer_interaction_test.dart`, `workstation_test.dart`, `computer_popup_npc_chat_test.dart`) 전부 통과. 전체 스위트는 동시에 진행 중인 다른 작업(isometric 로비)이 같은 브랜치에서 진행형이라 파일별로 나눠 확인 중
 - `dart analyze`: 이상 없음
 - `flutter analyze`: 이 PC의 Flutter 분석 서버 LSP 통신 오류로 진단 전 종료됨 (원인 분석: `docs/KNOWN_ISSUES.md`)
