@@ -1,6 +1,7 @@
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/screens/office_screen.dart';
 import 'package:flame/components.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -45,14 +46,27 @@ void main() {
     final linkText = find.text('https://mail.naver.com/v2/folders/-1/unread');
     expect(linkText, findsOneWidget);
     expect(
-      find.ancestor(of: linkText, matching: find.byType(InkWell)),
+      find.ancestor(of: linkText, matching: find.byType(GestureDetector)),
       findsOneWidget,
-      reason: 'the URL itself is wrapped in a tappable InkWell',
+      reason: 'the URL itself is wrapped in a tappable region',
     );
-    // The surrounding text is split into its own plain (non-InkWell) Text
+    // The surrounding text is split into its own plain (non-tappable) Text
     // nodes, proving the message wasn't rendered as one untouched blob.
     expect(find.text('링크 '), findsOneWidget);
     expect(find.text(' 확인'), findsOneWidget);
+
+    // Underlined only on hover, like a normal web link — not always.
+    final linkFinder = find.text('https://mail.naver.com/v2/folders/-1/unread');
+    Text textOf() => tester.widget<Text>(linkFinder);
+    expect(textOf().style?.decoration, TextDecoration.none);
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(linkFinder));
+    await tester.pump();
+    expect(textOf().style?.decoration, TextDecoration.underline);
   });
 
   testWidgets(

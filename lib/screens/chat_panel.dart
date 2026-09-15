@@ -665,10 +665,6 @@ class _LinkifiedText extends StatelessWidget {
     if (matches.isEmpty) {
       return Text(text, style: style);
     }
-    final linkStyle = style.copyWith(
-      color: const Color(0xFF5DE0E6),
-      decoration: TextDecoration.underline,
-    );
     final spans = <Widget>[];
     var cursor = 0;
     for (final match in matches) {
@@ -676,17 +672,48 @@ class _LinkifiedText extends StatelessWidget {
         spans.add(Text(text.substring(cursor, match.start), style: style));
       }
       final url = match.group(0)!;
-      spans.add(
-        InkWell(
-          onTap: () => openInNewTab(url),
-          child: Text(url, style: linkStyle),
-        ),
-      );
+      spans.add(_LinkSpan(url: url, style: style));
       cursor = match.end;
     }
     if (cursor < text.length) {
       spans.add(Text(text.substring(cursor), style: style));
     }
     return Wrap(children: spans);
+  }
+}
+
+/// One clickable URL within [_LinkifiedText] — underlined only while the
+/// mouse is hovering over it, like a normal web link, rather than always.
+class _LinkSpan extends StatefulWidget {
+  const _LinkSpan({required this.url, required this.style});
+
+  final String url;
+  final TextStyle style;
+
+  @override
+  State<_LinkSpan> createState() => _LinkSpanState();
+}
+
+class _LinkSpanState extends State<_LinkSpan> {
+  var _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: () => openInNewTab(widget.url),
+        child: Text(
+          widget.url,
+          style: widget.style.copyWith(
+            color: const Color(0xFF5DE0E6),
+            decoration:
+                _hovering ? TextDecoration.underline : TextDecoration.none,
+          ),
+        ),
+      ),
+    );
   }
 }
