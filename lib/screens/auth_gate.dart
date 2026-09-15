@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_office/data/activity_repository.dart';
 import 'package:ai_office/data/board_repository.dart';
 import 'package:ai_office/data/chat_attachment_repository.dart';
@@ -13,6 +15,7 @@ import 'package:ai_office/data/npc_usage_repository.dart';
 import 'package:ai_office/data/remote_command_repository.dart';
 import 'package:ai_office/data/server_lock_repository.dart';
 import 'package:ai_office/data/slack_integration_repository.dart';
+import 'package:ai_office/services/agent_process_manager.dart';
 import 'package:ai_office/game/activity/activity_event.dart';
 import 'package:ai_office/game/board/board_task.dart';
 import 'package:ai_office/game/npc/ai_employee.dart';
@@ -98,6 +101,7 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
   final _remoteCommandRepository =
       RemoteCommandRepository(Supabase.instance.client);
   final _serverLockRepository = ServerLockRepository(Supabase.instance.client);
+  final _agentProcessManager = AgentProcessManager();
   MultiplayerChannel? _multiplayerToDispose;
 
   Future<_LoadedSession> _load() async {
@@ -137,6 +141,23 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
     final boardTasks = results[6] as List<BoardTask>;
     final activityReadAt = results[7] as DateTime?;
     final hasServerPassword = results[8] as bool;
+
+    // If this computer has an agent config and the switch was already on
+    // (e.g. the app was closed and reopened while the server was left
+    // running), start the agent back up rather than leaving it off until
+    // someone happens to toggle the switch again. Fire-and-forget: this
+    // must never block or fail login.
+    if (_agentProcessManager.hasConfig()) {
+      unawaited(
+        _serverLockRepository
+            .fetchRunning(companyId)
+            .then((running) {
+          if (running) {
+            unawaited(_agentProcessManager.start());
+          }
+        }).catchError((_) {}),
+      );
+    }
 
     final userId = Supabase.instance.client.auth.currentUser!.id;
     final multiplayer = MultiplayerChannel(
@@ -237,8 +258,18 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
           _serverLockRepository.verify(companyId, attempt),
       initialServerUnlocked: !hasServerPassword,
       checkServerRunning: () => _serverLockRepository.fetchRunning(companyId),
-      setServerRunning: (running) =>
-          _serverLockRepository.setRunning(companyId, running),
+      setServerRunning: (running) async {
+        await _serverLockRepository.setRunning(companyId, running);
+        // Best-effort: a computer with no agent config just isn't meant to
+        // run one, so hasConfig()/start()/stop() all quietly no-op there
+        // rather than surfacing an error for every other computer's power
+        // switch click.
+        if (running) {
+          await _agentProcessManager.start();
+        } else {
+          _agentProcessManager.stop();
+        }
+      },
     );
 
     return _LoadedSession(
