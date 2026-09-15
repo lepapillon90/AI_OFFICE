@@ -183,7 +183,12 @@ class _CompanyLoaderState extends State<_CompanyLoader> {
             fileName: fileName,
             bytes: bytes,
           );
-        } catch (_) {
+        } catch (e, st) {
+          // sendChatAttachment treats a null return as "silently do
+          // nothing" (no error UI) — this at least leaves a console
+          // trace, since a real failure otherwise looks identical to
+          // the user just not having attached anything.
+          debugPrint('uploadChatAttachment failed for $fileName: $e\n$st');
           return null;
         }
       },
