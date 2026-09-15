@@ -1431,6 +1431,17 @@ class OfficeGame extends FlameGame
       replyBody = '서버가 잠겨 있습니다. 서버실의 서버기계에서 비밀번호를 입력해 잠금을 해제해주세요.';
     } else if (parsed == null) {
       replyBody = '지원하지 않는 명령이에요. "터미널 열어줘" 또는 "OOO 폴더 만들어줘"처럼 말해보세요.';
+    } else if (checkServerRunning != null && !await fetchServerRunning()) {
+      // The power switch is company-wide (server_control has no
+      // machine_key — see docs/PHASE8_REMOTE_AGENT.md), so this applies
+      // to every computer, not just the shared `@서버` one. Checked up
+      // front rather than just letting the command time out after 45s
+      // with no agent polling to pick it up, or surfacing whatever raw
+      // exception a dead agent process leaves behind. Gated on
+      // checkServerRunning being configured at all, so a setup that
+      // never wired up the power switch (including older tests) isn't
+      // newly blocked by a check it never opted into.
+      replyBody = '서버가 종료되어 있습니다. 서버실의 서버기계에서 서버를 실행시켜주세요.';
     } else {
       final request = requestRemoteCommand;
       if (request == null) {

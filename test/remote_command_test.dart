@@ -141,6 +141,42 @@ void main() {
       expect(game.chatMessages.last.body, contains('설정되지 않았습니다'));
     });
 
+    test('server machine switched off replies with a plain-language '
+        'message and never calls the handler (no 45s wait for a dead '
+        'agent to time out)', () async {
+      var called = false;
+      final game = OfficeGame(
+        checkServerRunning: () async => false,
+        requestRemoteCommand: (type, params, machineKey) async {
+          called = true;
+          return 'ok';
+        },
+      );
+
+      game.sendChatMessage('@서버 터미널 열어줘');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(called, isFalse);
+      expect(game.chatMessages.last.body, contains('서버가 종료되어 있습니다'));
+    });
+
+    test('server machine switched on dispatches normally', () async {
+      RemoteCommandType? calledType;
+      final game = OfficeGame(
+        checkServerRunning: () async => true,
+        requestRemoteCommand: (type, params, machineKey) async {
+          calledType = type;
+          return '터미널을 열었습니다.';
+        },
+      );
+
+      game.sendChatMessage('@서버 터미널 열어줘');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calledType, RemoteCommandType.openTerminal);
+      expect(game.chatMessages.last.body, '터미널을 열었습니다.');
+    });
+
     test('a bare "@서버" (no command) is just a private mention, not '
         'dispatched', () async {
       var called = false;
