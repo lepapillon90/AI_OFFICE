@@ -31,4 +31,41 @@ void main() {
     expect(find.text('아직 안 보낸 메시지'), findsOneWidget,
         reason: 'text survives switching back to the public tab');
   });
+
+  testWidgets('a URL pasted into a public message renders as a tappable '
+      'link, split out from the surrounding text', (tester) async {
+    final game = OfficeGame.forTest(playerPosition: Vector2(430, 350));
+    game.openChat();
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    game.sendChatMessage('링크 https://mail.naver.com/v2/folders/-1/unread 확인');
+    await tester.pump();
+
+    final linkText = find.text('https://mail.naver.com/v2/folders/-1/unread');
+    expect(linkText, findsOneWidget);
+    expect(
+      find.ancestor(of: linkText, matching: find.byType(InkWell)),
+      findsOneWidget,
+      reason: 'the URL itself is wrapped in a tappable InkWell',
+    );
+    // The surrounding text is split into its own plain (non-InkWell) Text
+    // nodes, proving the message wasn't rendered as one untouched blob.
+    expect(find.text('링크 '), findsOneWidget);
+    expect(find.text(' 확인'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a message with no URL renders as one plain Text (not split/linkified)',
+      (tester) async {
+    final game = OfficeGame.forTest(playerPosition: Vector2(430, 350));
+    game.openChat();
+    await tester.pumpWidget(MaterialApp(home: OfficeScreen(game: game)));
+    await tester.pump();
+
+    game.sendChatMessage('그냥 일반 메시지입니다');
+    await tester.pump();
+
+    expect(find.text('그냥 일반 메시지입니다'), findsOneWidget);
+  });
 }

@@ -592,7 +592,7 @@ class _MessageList extends StatelessWidget {
                 ),
               ),
               if (message.attachmentName == null)
-                Text(
+                _LinkifiedText(
                   message.body,
                   style: TextStyle(
                     color: isWhisper ? Colors.white70 : Colors.white,
@@ -640,5 +640,53 @@ class _MessageList extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Renders [text] with any `http(s)://` URLs tappable (opens via
+/// [openInNewTab]) and everything else as plain text. Built as a [Wrap]
+/// of [Text]/[InkWell] segments rather than [RichText]'s
+/// [TapGestureRecognizer] spans — a recognizer needs to be manually
+/// disposed, which is easy to get wrong when the surrounding list rebuilds
+/// on every new message (as this chat does), quietly leaking one per
+/// rebuild; [InkWell] manages its own gesture handling with no such
+/// lifecycle to track.
+class _LinkifiedText extends StatelessWidget {
+  const _LinkifiedText(this.text, {required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  static final _urlPattern = RegExp(r'https?://[^\s]+');
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _urlPattern.allMatches(text).toList();
+    if (matches.isEmpty) {
+      return Text(text, style: style);
+    }
+    final linkStyle = style.copyWith(
+      color: const Color(0xFF5DE0E6),
+      decoration: TextDecoration.underline,
+    );
+    final spans = <Widget>[];
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.start > cursor) {
+        spans.add(Text(text.substring(cursor, match.start), style: style));
+      }
+      final url = match.group(0)!;
+      spans.add(
+        InkWell(
+          onTap: () => openInNewTab(url),
+          child: Text(url, style: linkStyle),
+        ),
+      );
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      spans.add(Text(text.substring(cursor), style: style));
+    }
+    return Wrap(children: spans);
   }
 }
