@@ -55,10 +55,12 @@ void main() {
     expect(find.text('링크 '), findsOneWidget);
     expect(find.text(' 확인'), findsOneWidget);
 
-    // Underlined only on hover, like a normal web link — not always.
+    // Underlined only on hover, like a normal web link — not always. The
+    // decoration itself stays TextDecoration.underline the whole time
+    // (see _LinkSpan's build() for why); only its color toggles.
     final linkFinder = find.text('https://mail.naver.com/v2/folders/-1/unread');
     Text textOf() => tester.widget<Text>(linkFinder);
-    expect(textOf().style?.decoration, TextDecoration.none);
+    expect(textOf().style?.decorationColor, Colors.transparent);
 
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await gesture.addPointer(location: Offset.zero);
@@ -66,7 +68,7 @@ void main() {
     await tester.pump();
     await gesture.moveTo(tester.getCenter(linkFinder));
     await tester.pump();
-    expect(textOf().style?.decoration, TextDecoration.underline);
+    expect(textOf().style?.decorationColor, isNot(Colors.transparent));
   });
 
   testWidgets(

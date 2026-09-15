@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_office/data/chat_message.dart';
 import 'package:ai_office/game/office_game.dart';
 import 'package:ai_office/util/open_url.dart';
@@ -599,41 +601,9 @@ class _MessageList extends StatelessWidget {
                   ),
                 )
               else
-                InkWell(
+                _AttachmentChip(
+                  name: message.attachmentName!,
                   onTap: () => onOpenAttachment(message),
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.attach_file,
-                          size: 14,
-                          color: Color(0xFF5DE0E6),
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            message.attachmentName!,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF5DE0E6),
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
             ],
           ),
@@ -696,22 +666,121 @@ class _LinkSpan extends StatefulWidget {
 
 class _LinkSpanState extends State<_LinkSpan> {
   var _hovering = false;
+  Timer? _exitTimer;
+
+  @override
+  void dispose() {
+    _exitTimer?.cancel();
+    super.dispose();
+  }
+
+  // Live-tested: the mouse sitting anywhere near this text's hit-test
+  // boundary (e.g. right at its edge, or crossing between two of its own
+  // wrapped lines) fires onEnter/onExit in a tight, continuous loop —
+  // flickering the underline on/off rather than holding it steady. A
+  // short debounce on the *exit* absorbs that jitter: a stray exit
+  // immediately followed by re-entry (within [_exitDelay]) never
+  // actually clears [_hovering].
+  static const _exitDelay = Duration(milliseconds: 100);
+
+  void _setHovering(bool value) {
+    _exitTimer?.cancel();
+    if (value) {
+      setState(() => _hovering = true);
+    } else {
+      _exitTimer = Timer(_exitDelay, () {
+        if (mounted) setState(() => _hovering = false);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
+      onEnter: (_) => _setHovering(true),
+      onExit: (_) => _setHovering(false),
       child: GestureDetector(
         onTap: () => openInNewTab(widget.url),
         child: Text(
           widget.url,
           style: widget.style.copyWith(
             color: const Color(0xFF5DE0E6),
-            decoration:
-                _hovering ? TextDecoration.underline : TextDecoration.none,
+            // Always underlined, never TextDecoration.none — toggling the
+            // decoration itself (rather than just its color) was observed
+            // live to shift where a long, wrapped URL breaks onto its
+            // next line right at the hover boundary, which re-triggered
+            // the hover state and flickered forever. Keeping the
+            // decoration constant and only swapping its color to
+            // transparent when not hovering can never perturb layout,
+            // since the property that toggles no longer affects it.
+            decoration: TextDecoration.underline,
+            decorationColor:
+                _hovering ? const Color(0xFF5DE0E6) : Colors.transparent,
+            // Extra line height pushes the baseline (and so the
+            // underline, which sits just below it) further from the
+            // glyphs themselves — decorationThickness only changes the
+            // line's stroke weight, not its vertical position, so this
+            // is the lever that actually moves it down.
+            height: 1.4,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A message's file attachment, shown as a small chip — underlined only
+/// on hover, matching [_LinkSpan]'s look for links. Reuses [InkWell]'s own
+/// [InkWell.onHover] rather than a separate [MouseRegion], since the chip
+/// already needs InkWell for its tap ripple.
+class _AttachmentChip extends StatefulWidget {
+  const _AttachmentChip({required this.name, required this.onTap});
+
+  final String name;
+  final VoidCallback onTap;
+
+  @override
+  State<_AttachmentChip> createState() => _AttachmentChipState();
+}
+
+class _AttachmentChipState extends State<_AttachmentChip> {
+  var _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      onHover: (hovering) => setState(() => _hovering = hovering),
+      mouseCursor: SystemMouseCursors.click,
+      child: Container(
+        margin: const EdgeInsets.only(top: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.attach_file, size: 14, color: Color(0xFF5DE0E6)),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                widget.name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: const Color(0xFF5DE0E6),
+                  decoration: TextDecoration.underline,
+                  decorationColor: _hovering
+                      ? const Color(0xFF5DE0E6)
+                      : Colors.transparent,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
