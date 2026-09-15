@@ -13,6 +13,7 @@ import 'package:ai_office/screens/meeting_panel.dart';
 import 'package:ai_office/screens/profile_card.dart';
 import 'package:ai_office/screens/roster_editor_dialog.dart';
 import 'package:ai_office/screens/server_lock_dialog.dart';
+import 'package:ai_office/screens/settings_panel.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
@@ -82,6 +83,7 @@ class _OfficeScreenState extends State<OfficeScreen> {
   bool _isActivityPanelOpen = false;
   bool _isBoardPanelOpen = false;
   bool _isAdminPanelOpen = false;
+  bool _isSettingsPanelOpen = false;
 
   bool get _anyOverlayOpen =>
       _officeGame.isComputerPopupOpen ||
@@ -92,7 +94,8 @@ class _OfficeScreenState extends State<OfficeScreen> {
       _officeGame.isChatOpen ||
       _isActivityPanelOpen ||
       _isBoardPanelOpen ||
-      _isAdminPanelOpen;
+      _isAdminPanelOpen ||
+      _isSettingsPanelOpen;
 
   void _reclaimGameFocusIfIdle() {
     if (_anyOverlayOpen || _gameFocusNode.hasFocus) {
@@ -211,6 +214,14 @@ class _OfficeScreenState extends State<OfficeScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: '설정',
+                      child: IconButton.filled(
+                        onPressed: () => setState(() => _isSettingsPanelOpen = true),
+                        icon: const Icon(Icons.settings_outlined),
+                      ),
+                    ),
                     if (widget.onLogout != null) ...[
                       const SizedBox(width: 8),
                       Tooltip(
@@ -361,6 +372,11 @@ class _OfficeScreenState extends State<OfficeScreen> {
                   slackRepository: widget.slackRepository,
                   serverLockRepository: widget.serverLockRepository,
                   onClose: () => setState(() => _isAdminPanelOpen = false),
+                ),
+              if (_isSettingsPanelOpen)
+                SettingsPanel(
+                  key: const ValueKey('settings-panel'),
+                  onClose: () => setState(() => _isSettingsPanelOpen = false),
                 ),
             ],
           );
